@@ -278,7 +278,8 @@ portwatch                              3초 전 갱신
   sudo 없는 `brew services list`는 실행 중인 root 서비스를 `none`으로 보였다. 검증: Phase 1 판별 테스트.
 - [x] DC-10: CI는 Linux 작업(검사·코어 테스트)을 모든 main 푸시와 PR에서 돌리고, macOS 빌드는 수동 실행(`workflow_dispatch`)에서만 돌린다.
   근거(2026-11-18 조사): 표준 macOS 실행기는 분당 약 $0.062로 Linux(약 $0.006)의 10배 정도다. 무료 한도는 자료마다 달라 확인하지 못했다.
-  Tauri 앱 빌드는 캐시 없이 10분 안팎이 걸린다. 사용자가 비용 기준을 바꾸면 이 결정을 다시 연다. 검증: Phase 0 CI 실행 기록.
+  Phase 0 실측: 캐시 없는 macOS 작업 전체가 약 1분 45초였다(run 44276588647). 코드가 커지면 다시 잰다.
+  사용자가 비용 기준을 바꾸면 이 결정을 다시 연다. 검증: Phase 0 CI 실행 기록.
 - [ ] DC-11: 사용자 서비스 `launchctl print gui/<uid>`의 형식이 system과 같은지. Phase 1에서 사용자 Mac으로 확인한다.
 - [ ] DC-12: 분류 규칙(임시 포트 범위, 보안 프로그램 기본 목록, 실행 파일 경로 규칙). Phase 1에서 합성 자료로 확정한다.
 - [ ] DC-13: brew가 아닌 launchd 서비스를 멈출 수 있게 할지와 범위. 제안: `/Library`·`~/Library` 아래 사용자가 설치한

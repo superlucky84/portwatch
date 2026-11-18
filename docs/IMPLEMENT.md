@@ -8,7 +8,7 @@
 - 완료(2026-11-18): 사용자 Mac에서 sudo 없이 root 서비스를 탐지할 수 있는지 시험했다(요구사항의 확인된 사실).
 - 완료(2026-11-18): 기존 도구 검토. 사용자가 LeftOpen을 직접 시험했고 root로 띄운 서비스를 잡지 못했다.
 - 완료(2026-11-18): 계획 문서 4종 초안. 사용자 결정 DC-01(Tauri)·DC-02(서명 없이 시작)·DC-04~06을 반영했다.
-- 진행 중(2026-11-18): Phase 0 부트스트랩. 구현·Linux 검증 완료, macOS CI 빌드와 사용자 Mac 실행 확인이 남았다.
+- 진행 중(2026-11-18): Phase 0 부트스트랩. 구현·Linux 검증·macOS CI 빌드 완료, 사용자 Mac 실행 확인이 남았다.
 - 탐지 기능은 아직 없다. 앱은 빈 목록만 보여준다.
 
 상세 계약을 바꾸면 요구사항·설계·단계·수동 기준을 같은 작업에서 갱신한다.
@@ -42,7 +42,7 @@ Refs: RQ-07, RQ-10, RQ-11, DC-01, DC-03, DC-05, DC-06, DC-10, DC-19
 - [x] 사용한 Tauri·플러그인 버전, 최소 macOS(DC-03), 대상 CPU(DC-19)를 DESIGN.md에 기록했다.
 - [x] README에 개발 환경 준비와 서명 없는 빌드를 실행하는 방법을 썼다.
 - [x] AGENTS.md의 소스 규칙을 실제 구조에 맞췄다.
-- [ ] macOS CI 빌드 성공 기록.
+- [x] macOS CI 빌드 성공 기록.
 - [ ] 사용자 Mac 실행 확인(종료 기준).
 
 기준 검증: 이 개발 환경과 CI에서 `npm run check`·`npm test` 통과, macOS CI 빌드 성공.
@@ -56,6 +56,52 @@ Refs: RQ-07, RQ-10, RQ-11, DC-01, DC-03, DC-05, DC-06, DC-10, DC-19
   macOS 전용 코드(`cfg(target_os = "macos")`)는 여기서 컴파일되지 않으므로 macOS CI가 확인한다.
 - 화면: Chromium에서 가짜 스냅샷으로 밝은·어두운 모드를 띄워 빈 목록 문구·경고 줄·버튼이 오류 없이 그려지는 것을 봤다.
   이 확인은 자동 테스트로 남기지 않았다(화면 테스트는 Phase 2).
+
+CI 기록(2026-11-18, 커밋 `cdab5cf`):
+
+- push run 44276583474: Linux 작업 성공(check·test, 약 35초). macOS 작업은 설계대로 건너뜀.
+- 수동 run 44276588647: Linux 성공, macOS(`macos-15`) 성공. macOS 작업 전체 약 1분 45초
+  (`check:app` 35초, `build:mac` 61초, 캐시 없음).
+- 빌드 결과 확인: `Signature=adhoc`, `Format=app bundle with Mach-O thin (arm64)`, `LSUIElement`=true,
+  `LSMinimumSystemVersion`=15.0. 앱 10.35 MiB, zip artifact 3.08 MB(14일 보관).
+- 아직 확인하지 않은 것: 실제 Mac에서의 실행·메뉴바 표시·Dock 숨김·팝오버 위치(종료 기준, 사용자 확인).
+
+Files:
+- `.github/workflows/ci.yml` (added)
+- `.gitignore` (added)
+- `AGENTS.md` (modified)
+- `Cargo.lock` (added)
+- `Cargo.toml` (added)
+- `README.md` (modified)
+- `crates/portwatch-collect/Cargo.toml` (added)
+- `crates/portwatch-collect/src/bin/portwatch-probe.rs` (added)
+- `crates/portwatch-collect/src/lib.rs` (added)
+- `crates/portwatch-core/Cargo.toml` (added)
+- `crates/portwatch-core/src/lib.rs` (added)
+- `crates/portwatch-core/src/snapshot.rs` (added)
+- `docs/DESIGN.md` (modified)
+- `docs/IMPLEMENT.md` (modified)
+- `docs/REQUIREMENTS.md` (modified)
+- `package-lock.json` (added)
+- `package.json` (added)
+- `scripts/check-docs.mjs` (added)
+- `scripts/make-icons.mjs` (added)
+- `src-tauri/Cargo.toml` (added)
+- `src-tauri/Info.plist` (added)
+- `src-tauri/build.rs` (added)
+- `src-tauri/capabilities/default.json` (added)
+- `src-tauri/icons/128x128.png` (added)
+- `src-tauri/icons/128x128@2x.png` (added)
+- `src-tauri/icons/32x32.png` (added)
+- `src-tauri/icons/app-icon.png` (added)
+- `src-tauri/icons/icon.icns` (added)
+- `src-tauri/icons/icon.png` (added)
+- `src-tauri/icons/tray-template.png` (added)
+- `src-tauri/src/main.rs` (added)
+- `src-tauri/tauri.conf.json` (added)
+- `ui/index.html` (added)
+- `ui/main.js` (added)
+- `ui/style.css` (added)
 
 ## Phase 1 — 탐지 코어 (읽기 전용): 대기
 
@@ -168,11 +214,11 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
 
 이 프로젝트의 현재 인계는 이 블록 하나다. 이전 내용은 git 이력에 남는다.
 
-- 현재 작업(2026-11-18): Phase 0 구현과 Linux 검증 완료. 메뉴바 아이콘과 빈 팝오버 창이 있고 탐지 기능은 없다.
+- 현재 작업(2026-11-18): Phase 0 구현, Linux 검증, macOS CI 빌드(run 44276588647) 완료. 메뉴바 아이콘과 빈 팝오버 창이 있고 탐지 기능은 없다.
 - 확인된 사실: 사용자 Mac에서 sudo 없이 root nginx를 netstat·ps·launchctl로 판별할 수 있었다(REQUIREMENTS.md).
   사용자 Mac은 macOS 15.6.1, arm64다.
 - 사용자 결정: macOS 전용, 메뉴바 앱·brew 설치·Spotlight 실행, 문서 기반 개발과 `main`, Tauri, Apple 서명 없이 시작.
-- 다음: macOS CI 빌드(수동 실행) 결과를 Phase 0에 기록하고, 사용자가 artifact 앱을 Mac에서 실행해 종료 기준을 확인한다.
-  그다음 Phase 1(탐지 코어)을 시작한다.
+- 다음: 사용자가 artifact 앱을 Mac에서 실행해 Phase 0 종료 기준을 확인한다. 그다음 Phase 1(탐지 코어)을 시작한다.
+- 후속 후보: `upload-artifact`의 `archive: false`로 zip이 이중으로 압축되지 않게 하는 것. 다음 macOS 빌드 때 함께 확인한다.
 - 차단: Phase 5 전에 DC-18(비공개 저장소의 배포 위치)을 사용자가 정해야 한다. Phase 1~4에는 차단 없음.
 - 커밋: 계획 `4384fd2`, 그리고 이 인계를 포함한 Phase 0 커밋(`main`).
