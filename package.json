@@ -1,0 +1,21 @@
+{
+  "name": "portwatch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "macOS menu bar app that lists local dev servers and stops them through their manager.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "cargo fmt --all --check && cargo clippy -p portwatch-core -p portwatch-collect --all-targets -- -D warnings && node scripts/check-docs.mjs",
+    "check:app": "cargo clippy -p portwatch --all-targets -- -D warnings",
+    "test": "cargo test -p portwatch-core -p portwatch-collect",
+    "build:mac": "tauri build --bundles app",
+    "icons": "node scripts/make-icons.mjs",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4"
+  }
+}

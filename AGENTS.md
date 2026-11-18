@@ -24,15 +24,19 @@ search hints and also search the document text.
 
 ## Source and checks
 
-The layout below is planned; Phase 0 creates it. Do not describe commands as available before they exist.
+Phase 0 created this layout. Do not describe commands as available before they exist.
 
+- The root Cargo workspace holds crates/portwatch-core, crates/portwatch-collect, and src-tauri.
+  Pin Tauri crates and the Tauri CLI to exact versions and record them in docs/DESIGN.md.
 - crates/portwatch-core/ is pure Rust: no process spawning, file system, network, or macOS APIs.
   It takes command output text and returns values. Test it with synthetic fixtures.
 - crates/portwatch-collect/ runs commands by absolute path with argument arrays (no shell) and LC_ALL=C.
 - src-tauri/ exposes only fixed commands to the UI. Do not add a shell plugin or arbitrary command execution.
 - ui/ renders snapshots only. Use JavaScript ES modules with two-space indentation and semicolons.
-- Run cargo fmt and clippy with warnings denied. Run npm run check and npm test for core changes,
-  and npm run test:ui for UI changes.
+- Run npm run check (cargo fmt, clippy with warnings denied, document links and IDs) and npm test for
+  every change. Run npm run check:app for src-tauri changes; on Linux it needs the WebKitGTK development packages.
+  npm run test:ui arrives in Phase 2.
+- macOS CI builds run only by manual dispatch because macOS minutes cost about ten times Linux minutes.
 - Behavior that only macOS shows must be verified on the user's Mac or macOS CI; record which one.
 
 ## Safety

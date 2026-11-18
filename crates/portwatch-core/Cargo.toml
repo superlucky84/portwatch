@@ -1,0 +1,12 @@
+[package]
+name = "portwatch-core"
+description = "Pure parsing, classification, and planning for portwatch. No OS calls."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

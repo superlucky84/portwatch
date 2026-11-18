@@ -1,0 +1,14 @@
+[package]
+name = "portwatch-collect"
+description = "macOS command collection and execution for portwatch."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+portwatch-core = { path = "../portwatch-core" }
+serde_json.workspace = true
+
+[[bin]]
+name = "portwatch-probe"
+path = "src/bin/portwatch-probe.rs"

@@ -1,0 +1,15 @@
+[package]
+name = "portwatch"
+description = "portwatch menu bar shell."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dependencies]
+portwatch-core = { path = "../crates/portwatch-core" }
+portwatch-collect = { path = "../crates/portwatch-collect" }
+tauri = { version = "=2.12.5", features = ["tray-icon", "image-png"] }
+tauri-plugin-positioner = { version = "=2.4.0", features = ["tray-icon"] }

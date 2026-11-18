@@ -8,39 +8,54 @@
 - 완료(2026-11-18): 사용자 Mac에서 sudo 없이 root 서비스를 탐지할 수 있는지 시험했다(요구사항의 확인된 사실).
 - 완료(2026-11-18): 기존 도구 검토. 사용자가 LeftOpen을 직접 시험했고 root로 띄운 서비스를 잡지 못했다.
 - 완료(2026-11-18): 계획 문서 4종 초안. 사용자 결정 DC-01(Tauri)·DC-02(서명 없이 시작)·DC-04~06을 반영했다.
-- 다음: Phase 0 부트스트랩. 시작 전에 DC-03(macOS 버전)·DC-19(CPU)를 사용자 Mac에서 확인한다.
-- 구현된 코드는 없다. 아래 명령(`cargo test` 등)은 Phase 0이 끝나야 쓸 수 있다.
+- 진행 중(2026-11-18): Phase 0 부트스트랩. 구현·Linux 검증 완료, macOS CI 빌드와 사용자 Mac 실행 확인이 남았다.
+- 탐지 기능은 아직 없다. 앱은 빈 목록만 보여준다.
 
 상세 계약을 바꾸면 요구사항·설계·단계·수동 기준을 같은 작업에서 갱신한다.
 미구현 명령이나 테스트를 이미 쓸 수 있는 것으로 안내하지 않는다.
 
-## 공통 검증 명령 (Phase 0에서 만든다)
+## 공통 검증 명령
 
 | 명령 | 내용 | 실행 위치 |
 | --- | --- | --- |
-| `npm run check` | `cargo fmt --check`, `cargo clippy -D warnings`, 문서 상대 링크 검사 | 이 개발 환경, CI(Linux) |
-| `npm test` | `cargo test -p portwatch-core` (합성 자료 테스트) | 이 개발 환경, CI(Linux) |
-| `npm run test:ui` | 가짜 스냅샷으로 화면 테스트 (Playwright) | 이 개발 환경, CI(Linux). Phase 2부터 |
-| `npm run build:mac` | `tauri build`로 .app 생성 | macOS CI, 사용자 Mac |
+| `npm run check` | `cargo fmt --check`, 코어·수집기 `cargo clippy -D warnings`, 문서 링크·앵커·ID 검사 | 이 개발 환경, CI(Linux) |
+| `npm run check:app` | 셸 크레이트 `cargo clippy -D warnings` | macOS CI. Linux는 WebKitGTK 개발 패키지가 있어야 한다 |
+| `npm test` | `cargo test -p portwatch-core -p portwatch-collect` (합성 자료 테스트) | 이 개발 환경, CI(Linux) |
+| `npm run test:ui` | 가짜 스냅샷으로 화면 테스트 (Playwright) | Phase 2에서 만든다 |
+| `npm run build:mac` | `tauri build --bundles app`으로 .app 생성 | macOS CI(수동 실행), 사용자 Mac |
 
-## Phase 0 — 프로젝트 부트스트랩: 대기
+## Phase 0 — 프로젝트 부트스트랩: 구현 완료, 사용자 Mac 확인 대기
 
 Refs: RQ-07, RQ-10, RQ-11, DC-01, DC-03, DC-05, DC-06, DC-10, DC-19
 
 진입 기준: 계획 문서 4종이 `main`에 있다. DC-03·DC-19를 사용자 Mac에서 확인했다
-(`sw_vers -productVersion`, `uname -m`).
+(2026-11-18: macOS 15.6.1, `arm64`).
 
-- [ ] Cargo workspace와 `crates/portwatch-core`(빈 스냅샷 타입과 테스트 하나), `crates/portwatch-collect`(빈 뼈대).
-- [ ] `src-tauri`: 트레이 아이콘, 빈 팝오버 창, Accessory 정책(Dock 아이콘 없음).
-- [ ] `ui/`: 빈 목록 화면.
-- [ ] 루트 `package.json`: Tauri CLI, `check`·`test`·`build:mac` 스크립트.
-- [ ] GitHub Actions: Linux에서 check·test, macOS에서 `build:mac`(main 푸시·수동 실행만, DC-10). 빌드 결과를 artifact로 올린다.
-- [ ] 사용한 Tauri와 플러그인 버전, 최소 macOS(DC-03), 대상 CPU(DC-19)를 DESIGN.md에 기록한다.
-- [ ] README에 개발 환경 준비와 서명 없는 빌드를 실행하는 방법을 쓴다.
-- [ ] AGENTS.md의 소스 규칙을 실제 구조에 맞춘다.
+- [x] Cargo workspace와 `crates/portwatch-core`(스냅샷 계약 타입과 직렬화 테스트), `crates/portwatch-collect`(빈 스냅샷과 `portwatch-probe`).
+- [x] `src-tauri`: 트레이 아이콘(template), 아이콘 아래 팝오버 창, 포커스를 잃으면 닫기, 오른쪽 클릭 종료 메뉴,
+  `LSUIElement`와 Accessory 정책(Dock 아이콘 없음), ad-hoc 서명, 최소 macOS 15.0.
+- [x] `ui/`: 빈 목록 화면, 경고 줄, 새로 고침·종료 버튼, 밝은·어두운 모드.
+- [x] 루트 `package.json`: Tauri CLI 2.12.4, `check`·`check:app`·`test`·`build:mac`·`icons` 스크립트.
+- [x] 문서 검사 스크립트(`scripts/check-docs.mjs`): 상대 링크·앵커·ID 참조.
+- [x] 아이콘 생성 스크립트(`scripts/make-icons.mjs`)와 생성한 아이콘.
+- [x] GitHub Actions(`ci.yml`): Linux에서 check·test(main 푸시·PR), macOS 빌드는 수동 실행만(DC-10). 빌드 결과를 artifact로 올린다.
+- [x] 사용한 Tauri·플러그인 버전, 최소 macOS(DC-03), 대상 CPU(DC-19)를 DESIGN.md에 기록했다.
+- [x] README에 개발 환경 준비와 서명 없는 빌드를 실행하는 방법을 썼다.
+- [x] AGENTS.md의 소스 규칙을 실제 구조에 맞췄다.
+- [ ] macOS CI 빌드 성공 기록.
+- [ ] 사용자 Mac 실행 확인(종료 기준).
 
 기준 검증: 이 개발 환경과 CI에서 `npm run check`·`npm test` 통과, macOS CI 빌드 성공.
 종료 기준: 사용자 Mac에서 CI artifact의 앱을 실행하면 메뉴바에 아이콘이 생기고 Dock 아이콘은 없다(M-05 일부).
+
+검증 기록(2026-11-18, 이 개발 환경 Linux, Rust 1.97.0, Node 22.23.5):
+
+- `npm run check` 통과: fmt, 코어·수집기 clippy 경고 0, 문서 6개·ID 61개.
+- `npm test` 통과: 코어 2개, 수집기 2개.
+- `npm run check:app` 통과: WebKitGTK 개발 패키지를 설치해 셸 크레이트를 Linux로 컴파일했다.
+  macOS 전용 코드(`cfg(target_os = "macos")`)는 여기서 컴파일되지 않으므로 macOS CI가 확인한다.
+- 화면: Chromium에서 가짜 스냅샷으로 밝은·어두운 모드를 띄워 빈 목록 문구·경고 줄·버튼이 오류 없이 그려지는 것을 봤다.
+  이 확인은 자동 테스트로 남기지 않았다(화면 테스트는 Phase 2).
 
 ## Phase 1 — 탐지 코어 (읽기 전용): 대기
 
@@ -153,9 +168,11 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
 
 이 프로젝트의 현재 인계는 이 블록 하나다. 이전 내용은 git 이력에 남는다.
 
-- 현재 작업(2026-11-18): 계획 문서 4종, AGENTS.md, README.md 초안 작성. 구현 코드는 없다.
+- 현재 작업(2026-11-18): Phase 0 구현과 Linux 검증 완료. 메뉴바 아이콘과 빈 팝오버 창이 있고 탐지 기능은 없다.
 - 확인된 사실: 사용자 Mac에서 sudo 없이 root nginx를 netstat·ps·launchctl로 판별할 수 있었다(REQUIREMENTS.md).
+  사용자 Mac은 macOS 15.6.1, arm64다.
 - 사용자 결정: macOS 전용, 메뉴바 앱·brew 설치·Spotlight 실행, 문서 기반 개발과 `main`, Tauri, Apple 서명 없이 시작.
-- 다음: 사용자 Mac에서 `sw_vers -productVersion`·`uname -m`을 확인해 DC-03·DC-19를 정하고 Phase 0을 시작한다.
-- 차단: Phase 5 전에 DC-18(비공개 저장소의 배포 위치)을 사용자가 정해야 한다. Phase 0~4에는 차단 없음.
-- 커밋: 이 인계를 포함한 첫 커밋(`main`).
+- 다음: macOS CI 빌드(수동 실행) 결과를 Phase 0에 기록하고, 사용자가 artifact 앱을 Mac에서 실행해 종료 기준을 확인한다.
+  그다음 Phase 1(탐지 코어)을 시작한다.
+- 차단: Phase 5 전에 DC-18(비공개 저장소의 배포 위치)을 사용자가 정해야 한다. Phase 1~4에는 차단 없음.
+- 커밋: 계획 `4384fd2`, 그리고 이 인계를 포함한 Phase 0 커밋(`main`).

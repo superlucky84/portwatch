@@ -38,9 +38,22 @@
 | `ui/` | 화면 | HTML/CSS/JS. 구현 방식은 DC-20. |
 
 - 루트에 Cargo workspace를 두고 세 크레이트를 묶는다. Tauri CLI와 화면 테스트 도구는 루트 `package.json`의 개발 의존성으로 둔다.
-- 메뉴바: Tauri 트레이 아이콘을 누르면 아이콘 아래에 팝오버 창을 띄운다. 창은 포커스를 잃으면 닫는다.
-- Dock 아이콘 없음: macOS 활성화 정책을 Accessory로 둔다.
-- 로그인 시 자동 실행, 브라우저 열기는 Tauri 공식 플러그인을 쓴다. 정확한 플러그인과 버전은 Phase 0에서 기록한다.
+- 메뉴바: Tauri 트레이 아이콘을 왼쪽 클릭하면 아이콘 바로 아래(positioner의 `TrayBottomCenter`)에 팝오버 창을 띄운다.
+  창은 포커스를 잃으면 닫는다. 아이콘 클릭으로 창이 포커스를 잃은 직후 300ms 안의 같은 클릭은 다시 열지 않는다.
+  오른쪽 클릭 메뉴와 창 아래쪽 버튼으로 종료한다. Dock 아이콘이 없어서 종료 수단을 따로 둔다.
+- Dock 아이콘 없음: `Info.plist`의 `LSUIElement`와 실행 중 Accessory 활성화 정책을 함께 쓴다.
+- 메뉴바 아이콘은 검은색 template 이미지(44px)라 macOS가 밝기·어두운 모드에 맞춰 색을 바꾼다. 아이콘은 `npm run icons`로 다시 그린다.
+- 로그인 시 자동 실행, 브라우저 열기는 Tauri 공식 플러그인을 Phase 2에서 추가한다.
+
+Phase 0에서 고정한 버전(2026-11-18, 게시 후 4주 안팎 지난 버전을 골랐다):
+
+| 구성 | 버전 |
+| --- | --- |
+| `tauri` | 2.12.5 |
+| `tauri-build` | 2.7.4 |
+| `@tauri-apps/cli` | 2.12.4 |
+| `tauri-plugin-positioner` | 2.4.0 |
+| 개발 환경 Rust | 1.97.0 |
 - 화면에 노출하는 명령은 스냅샷 받기, 항목 멈추기, URL 열기·복사, 설정 읽기·쓰기로 고정한다.
   임의 명령을 실행하는 셸 플러그인은 넣지 않는다. 화면이 잘못되거나 변조돼도 정해진 동작 밖으로 나가지 않게 하기 위해서다.
 - `portwatch-probe`는 화면 없이 스냅샷을 JSON으로 출력한다. 화면을 만들기 전에 사용자 Mac에서 탐지 결과를 확인하는 데 쓴다.
@@ -49,9 +62,12 @@
 
 수집 한 번의 결과를 스냅샷 하나로 만든다. 코어와 화면 사이의 계약이다.
 
+Phase 0에서 `crates/portwatch-core/src/snapshot.rs`에 이 모양으로 구현했다. JSON 필드 이름은 camelCase,
+분류·관리 주체 값은 kebab-case(`dev-server`, `launchd-brew`)다.
+
 ```text
 Snapshot
-  takenAt        수집 시각
+  takenAtMs      수집 시각 (Unix epoch 밀리초)
   entries[]      Entry 목록
   warnings[]     실패한 명령·읽지 못한 정보 (예: "docker 없음")
 
@@ -64,8 +80,8 @@ Entry            포트를 연 서버 하나 (프로세스 트리의 최상위 �
   processes[]    { pid, ppid, user, startedAt, command }   최상위부터
   project        { name, path } 또는 없음
   domains[]      { name, via, port, tls }   via: hosts | nginx | direct
-  protected      멈추기를 막는지와 그 이유
-  stopPlan       멈추기 계획 요약 (권한 필요 여부 포함)
+  protection     멈추기를 막는 이유 (막지 않으면 없음)
+  stopPlan       멈추기 계획 요약 (권한 필요 여부 포함). Phase 3에서 추가
 
 Manager
   kind           launchd-brew | launchd-other | docker | pm2 | terminal | detached | app | launchd-socket | unknown
@@ -247,7 +263,8 @@ portwatch                              3초 전 갱신
 - [x] DC-02: Apple 서명·공증 없이 시작한다. 2026-11-18 사용자 결정("일단 애플서명없이").
   ad-hoc 서명만 하고, Gatekeeper 허용 절차를 안내한다(DC-21). 동료에게 배포하기로 하면 Apple Developer Program(연 $99)
   가입과 공증을 다시 검토한다. 공증을 나중에 붙여도 앱 구조는 바뀌지 않는다. RQ-09. 검증: M-14.
-- [ ] DC-03: 최소 지원 macOS 버전. TBD — 사용자 Mac 버전 확인 뒤 정한다. 검증: Phase 0, M-13.
+- [x] DC-03: 최소 지원 macOS는 15.0이다. 2026-11-18 사용자 Mac이 15.6.1이고, netstat·launchctl 출력 형식을 이 버전에서만 확인했기 때문이다.
+  더 낮은 버전은 동료 배포가 필요해지면 그 버전의 출력 형식을 확인한 뒤 낮춘다. `bundle.macOS.minimumSystemVersion`에 적용한다. 검증: Phase 0, M-13.
 - [x] DC-04: macOS 전용으로 시작한다. 2026-11-18 사용자 결정("일단 mac에서만 되면 될 거 같은데"). RQ-01.
 - [x] DC-05: 메뉴바 상주 앱, Homebrew cask 설치, Spotlight 실행. 2026-11-18 사용자 선호.
   앞서 제안했던 "Node CLI + 로컬 웹 대시보드"는 이 결정으로 접었다. RQ-07, RQ-08. 검증: M-05, M-13.
@@ -259,8 +276,9 @@ portwatch                              3초 전 갱신
 - [x] DC-09: 서비스는 이름 규칙이나 명령줄 글자가 아니라 launchd의 PID와 plist 실행 경로로 맞춘다.
   근거: 라벨이 `homebrew.mxcl.*`가 아니라 `sh.brew.nginx`였고, nginx는 명령줄을 바꿔 쓰며,
   sudo 없는 `brew services list`는 실행 중인 root 서비스를 `none`으로 보였다. 검증: Phase 1 판별 테스트.
-- [ ] DC-10: CI 구성과 비용. 제안: Linux 작업에서 코어 테스트를 매번 돌리고, macOS 빌드는 main 푸시·태그·수동 실행에서만 돌린다.
-  비공개 저장소의 macOS 실행 시간은 유료 한도에 더 크게 잡히므로 Phase 0에서 현재 요금 기준을 확인한다.
+- [x] DC-10: CI는 Linux 작업(검사·코어 테스트)을 모든 main 푸시와 PR에서 돌리고, macOS 빌드는 수동 실행(`workflow_dispatch`)에서만 돌린다.
+  근거(2026-11-18 조사): 표준 macOS 실행기는 분당 약 $0.062로 Linux(약 $0.006)의 10배 정도다. 무료 한도는 자료마다 달라 확인하지 못했다.
+  Tauri 앱 빌드는 캐시 없이 10분 안팎이 걸린다. 사용자가 비용 기준을 바꾸면 이 결정을 다시 연다. 검증: Phase 0 CI 실행 기록.
 - [ ] DC-11: 사용자 서비스 `launchctl print gui/<uid>`의 형식이 system과 같은지. Phase 1에서 사용자 Mac으로 확인한다.
 - [ ] DC-12: 분류 규칙(임시 포트 범위, 보안 프로그램 기본 목록, 실행 파일 경로 규칙). Phase 1에서 합성 자료로 확정한다.
 - [ ] DC-13: brew가 아닌 launchd 서비스를 멈출 수 있게 할지와 범위. 제안: `/Library`·`~/Library` 아래 사용자가 설치한
@@ -276,8 +294,8 @@ portwatch                              3초 전 갱신
   - (b) 코드는 비공개로 두고 빌드한 앱만 공개 저장소(예: `superlucky84/homebrew-tap`의 Releases)에 올린다.
   - (c) brew 없이 Mac에서 직접 빌드해 `/Applications`에 설치한다. Gatekeeper 절차가 필요 없지만 RQ-08과 다르다.
   Phase 5 전에 정한다. 검증: M-13.
-- [ ] DC-19: 대상 CPU. 제안: Apple Silicon(arm64)만 먼저 빌드하고, Intel Mac 사용자에게 배포할 때 universal 빌드를 추가한다.
-  사용자 Mac은 `/opt/homebrew`를 쓰므로 Apple Silicon으로 보인다. Phase 0에서 확인한다.
+- [x] DC-19: 대상 CPU는 Apple Silicon(`aarch64-apple-darwin`)만이다. 2026-11-18 사용자 Mac의 `uname -m`이 `arm64`였다.
+  Intel Mac 사용자에게 배포하기로 하면 universal 빌드를 추가한다. Intel brew 경로(`/usr/local`) 판별은 Phase 6에서 합성 자료로만 확인한다.
 - [ ] DC-20: 화면 구현 방식. 제안: 프레임워크 없이 ES 모듈로 시작한다(docatlas 화면과 같은 방식).
   화면 테스트는 Tauri 호출을 가짜로 바꾸고 Playwright로 이 개발 환경에서 돌린다. Phase 2에서 확정한다.
 - [ ] DC-21: Gatekeeper 처리. 허용 절차를 README로 안내할지, cask 설치 단계에서 격리 표시를 지울지 고른다.

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>portwatch</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script type="module" src="./main.js"></script>
+  </head>
+  <body>
+    <header class="bar">
+      <h1>portwatch</h1>
+      <span id="updated" class="muted" aria-live="polite"></span>
+    </header>
+    <main id="list" class="list"></main>
+    <ul id="warnings" class="warnings" hidden></ul>
+    <footer class="bar">
+      <button id="refresh" type="button">새로 고침</button>
+      <button id="quit" type="button">종료</button>
+    </footer>
+  </body>
+</html>

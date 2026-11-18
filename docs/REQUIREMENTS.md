@@ -39,11 +39,12 @@
 | ../AGENTS.md | 에이전트 작업 규칙 | 작성됨 |
 | ../README.md | 저장소 소개와 문서 안내 | 작성됨 |
 | docs/ | 요구사항·설계·구현 계획·수동 검증 | 계획 초안 |
-| ../crates/portwatch-core/ | 파서·판별기·도메인 연결·멈추기 계획 (순수 Rust, OS 호출 없음) | 계획(Phase 0~). 구현 없음 |
-| ../crates/portwatch-collect/ | macOS 명령 실행·결과 원문 수집·실행기 | 계획(Phase 1~). 구현 없음 |
-| ../src-tauri/ | Tauri 셸: 트레이 아이콘·창·화면에 노출하는 고정 명령 | 계획(Phase 0~). 구현 없음 |
-| ../ui/ | 메뉴바 팝오버 화면 (HTML/CSS/JS) | 계획(Phase 0~). 구현 없음 |
-| ../scripts/ | Mac 출력 형식 표본 수집 등 개발 스크립트 | 계획(Phase 1~). 구현 없음 |
+| ../crates/portwatch-core/ | 파서·판별기·도메인 연결·멈추기 계획 (순수 Rust, OS 호출 없음) | Phase 0: 스냅샷 계약 타입만 |
+| ../crates/portwatch-collect/ | macOS 명령 실행·결과 원문 수집·실행기 | Phase 0: 빈 스냅샷과 `portwatch-probe`만. 수집은 Phase 1 |
+| ../src-tauri/ | Tauri 셸: 트레이 아이콘·창·화면에 노출하는 고정 명령 | Phase 0: 아이콘·팝오버 창·종료 |
+| ../ui/ | 메뉴바 팝오버 화면 (HTML/CSS/JS) | Phase 0: 빈 목록 화면 |
+| ../scripts/ | 문서 검사·아이콘 생성, Mac 출력 형식 표본 수집 등 개발 스크립트 | Phase 0: 문서 검사·아이콘. 표본 수집은 Phase 1 |
+| ../.github/workflows/ci.yml | Linux 검사·테스트, 수동 macOS 빌드 | Phase 0 |
 
 ## 요구사항의 상태
 
@@ -84,7 +85,7 @@
 ## 확인된 사실: 사용자 Mac 관찰 (2026-11-18)
 
 사용자가 회사 Mac에서 `sudo brew services start nginx`로 nginx를 root 서비스로 띄우고 sudo 없이 확인했다.
-사용자 이름 같은 개인 정보는 기록하지 않는다. macOS 버전은 아직 기록하지 않았다(DC-03).
+사용자 이름 같은 개인 정보는 기록하지 않는다. 사용자 Mac은 macOS 15.6.1, Apple Silicon(`arm64`)이다(DC-03, DC-19).
 
 | 확인한 것 | 방법(sudo 없음) | 결과 |
 | --- | --- | --- |
@@ -126,7 +127,6 @@
 
 ## 미결정 사항
 
-- DC-03 최소 지원 macOS 버전: TBD. 사용자 Mac 버전 확인 필요.
 - DC-18 배포 위치(비공개 저장소 문제): TBD. 사용자 결정 필요.
-- DC-19 대상 CPU(Apple Silicon 전용 또는 Intel 포함): TBD.
+- 최소 macOS 15.0(DC-03)과 Apple Silicon 전용(DC-19)은 사용자 Mac 확인 결과로 정했다.
 - 그 밖의 설계 결정은 [설계의 결정 체크리스트](./DESIGN.md#결정-체크리스트)에 있다.
