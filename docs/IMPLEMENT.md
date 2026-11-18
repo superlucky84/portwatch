@@ -131,6 +131,17 @@ Refs: RQ-02, RQ-03, RQ-04, PR-03, PR-04, DC-07, DC-08, DC-09, DC-11, DC-12, M-01
 기준 검증: `npm test`의 파서·판별·수집 흐름 테스트. F-01(root brew nginx: master·worker)이 `launchd-brew`·system·`nginx`·root로 판별된다.
 종료 기준: 사용자 Mac에서 `portwatch-probe` 결과가 M-01~M-04의 탐지 기준을 만족한다. DC-11·DC-12를 결과와 함께 닫는다.
 
+검증 기록(2026-11-18, 커밋 `b9d2e44`):
+
+- 이 개발 환경(Linux): `npm run check` 통과, `npm test` 34개 통과(코어 단위 18, 합성 시나리오 7, 수집기 9).
+  `npm run check:app` 통과. probe는 Linux에서 "macOS가 아니어서 수집하지 않았습니다." 경고만 낸다.
+- CI run 44282667243(수동): Linux 성공, macOS 성공(작업 약 1분 37초). artifact는 앱과 probe를 담은 zip 하나(3.58 MB, 이중 압축 없음).
+- macOS 실행기(15.8.2)에서 probe 실행: 항목 1개(launchd가 연 22번, 시스템·보안, 보호)로 맞게 판별했다. `--raw`로 본 형식:
+  netstat 헤더는 사용자 Mac과 같다. ps 열은 사용자 이름 칸이 넓게 채워져도 읽힌다.
+  `launchctl print system`·`gui/501`의 서비스 줄은 `PID 상태<탭>라벨`이며 공백 구분으로 읽힌다.
+  `gui/501`은 `type = login`이지만 `services = { … }` 형식은 system과 같다.
+- 실행기에는 개발 서버·brew 서비스가 없어서 분류 규칙(DC-12)과 사용자 brew 서비스(DC-11)의 실제 사례는 사용자 Mac에서 확인한다.
+
 ## Phase 2 — 메뉴바 목록 화면: 대기
 
 Refs: RQ-02, RQ-07, PR-03, PR-04, PR-06, PR-07, PR-08, DC-16, DC-20, M-03, M-04, M-05
@@ -198,6 +209,7 @@ Refs: RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, DC-12, DC-16
 
 진입 기준: Phase 5 완료.
 
+- [ ] macOS CI에서 실제 서비스를 띄워 probe로 판별하는 시나리오(예: brew nginx를 사용자·root 서비스로, 백그라운드 서버). 실행기는 sudo에 비밀번호가 없다.
 - [ ] IPv6 전용·특정 주소에만 연 포트, 같은 포트를 여러 프로세스가 연 경우.
 - [ ] 수집 중 프로세스가 끝나는 경합, 멈추기 직전 PID 재사용.
 - [ ] 긴 명령줄·공백·한글 경로·이상한 프로세스 이름.
@@ -225,11 +237,12 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
 이 프로젝트의 현재 인계는 이 블록 하나다. 이전 내용은 git 이력에 남는다.
 
 - 현재 작업(2026-11-18): Phase 1 탐지 코어. 파서·판별기·수집기·`portwatch-probe` 구현과 Linux 테스트(34개) 완료.
+  macOS 실행기(15.8.2)에서 probe와 출력 형식을 확인했다(CI run 44282667243).
   메뉴바 앱은 실제 수집을 하지만 목록 화면은 Phase 2에서 만든다.
 - 확인된 사실: 사용자 Mac에서 sudo 없이 root nginx를 netstat·ps·launchctl로 판별할 수 있었다(REQUIREMENTS.md).
   사용자 Mac은 macOS 15.6.1, arm64다. Phase 0 앱 실행도 사용자 Mac에서 확인했다.
 - 사용자 결정: macOS 전용, 메뉴바 앱·brew 설치·Spotlight 실행, 문서 기반 개발과 `main`, Tauri, Apple 서명 없이 시작.
-- 다음: macOS CI(수동 실행)에서 실행기의 실제 출력으로 probe를 돌려 형식을 확인한다. 이어서 사용자가 artifact의
-  `portwatch-probe`와 `--raw` 결과를 공유하면 DC-11(사용자 서비스 형식)·DC-12(분류)를 닫고 Phase 1 종료 기준(M-01~M-04 탐지)을 확인한다.
+- 다음: 사용자가 run 44282667243의 artifact에 든 `portwatch-probe`를 회사 Mac에서 실행하고 표와 `--raw` 결과를 공유한다.
+  그 결과로 DC-11(사용자 brew 서비스 실제 사례)·DC-12(분류)를 닫고 Phase 1 종료 기준(M-01~M-04 탐지)을 확인한다.
 - 차단: Phase 5 전에 DC-18(비공개 저장소의 배포 위치)을 사용자가 정해야 한다. Phase 1~4에는 차단 없음.
-- 커밋: 계획 `4384fd2`, Phase 0 `cdab5cf`·`79a25b8`, 그리고 이 인계를 포함한 Phase 1 구현 커밋(`main`).
+- 커밋: 계획 `4384fd2`, Phase 0 `cdab5cf`·`79a25b8`, Phase 1 구현 `b9d2e44`, 그리고 이 인계를 포함한 CI 기록 커밋(`main`).

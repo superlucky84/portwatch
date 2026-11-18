@@ -105,7 +105,7 @@ brew는 `/opt/homebrew/bin/brew`와 `/usr/local/bin/brew`를 차례로 찾는다
 | `/usr/sbin/netstat -anv -p tcp` | 연결을 기다리는 포트와 PID. root·다른 사용자 포함 | 확인된 사실(2026-11-18) |
 | `/bin/ps -ww -axo pid=,ppid=,pgid=,uid=,tty=,user=,lstart=,command=` | 부모·프로세스 그룹·uid·터미널·사용자·시작 시각·명령줄 | 명령줄 읽기는 확인됨. 열 형식은 Phase 1에서 확인 |
 | `/bin/launchctl print system` | root 서비스의 PID → 라벨 표 | 확인된 사실 |
-| `/bin/launchctl print gui/<내 uid>` | 사용자 서비스의 PID → 라벨 표 | 형식 확인 필요(DC-11) |
+| `/bin/launchctl print gui/<내 uid>` | 사용자 서비스의 PID → 라벨 표 | 형식은 CI 실행기에서 확인. 실제 사례는 DC-11 |
 | `/bin/launchctl print <도메인>/<라벨>` | plist 경로·실행 파일·인수·작업 폴더 | 확인된 사실. 서비스 항목에만 실행 |
 | `/usr/sbin/lsof -a -p <PID 목록> -d cwd -Fn` | 내 프로세스의 작업 폴더 | 자기 프로세스만 보인다는 사실 확인 |
 | `docker ps --format '{{json .}}'` | 컨테이너 이름과 포트 연결 | Docker가 있을 때만. 형식은 DC-14 |
@@ -320,7 +320,9 @@ portwatch                              3초 전 갱신
   근거(2026-11-18 조사): 표준 macOS 실행기는 분당 약 $0.062로 Linux(약 $0.006)의 10배 정도다. 무료 한도는 자료마다 달라 확인하지 못했다.
   Phase 0 실측: 캐시 없는 macOS 작업 전체가 약 1분 45초였다(run 44276588647). 코드가 커지면 다시 잰다.
   사용자가 비용 기준을 바꾸면 이 결정을 다시 연다. 검증: Phase 0 CI 실행 기록.
-- [ ] DC-11: 사용자 서비스 `launchctl print gui/<uid>`의 형식이 system과 같은지. Phase 1에서 사용자 Mac으로 확인한다.
+- [ ] DC-11: 사용자 서비스 `launchctl print gui/<uid>`의 형식이 system과 같은지. 2026-11-18 macOS 15.8.2 CI 실행기에서
+  `services = { … }` 블록과 `PID 상태<탭>라벨` 줄 형식이 system과 같음을 확인했다(run 44282667243). 실제 brew 사용자 서비스가
+  `launchd-brew`(user)로 판별되는지 사용자 Mac에서 본 뒤 닫는다.
 - [ ] DC-12: 분류 규칙(임시 포트 범위, 보안 프로그램 기본 목록, 실행 파일 경로 규칙). Phase 1에서 위 "분류" 절대로 구현하고
   합성 자료로 검증했다. 사용자 Mac의 `portwatch-probe` 결과로 잡음이 기본 화면에 남지 않는지 확인한 뒤 닫는다.
 - [ ] DC-13: brew가 아닌 launchd 서비스를 멈출 수 있게 할지와 범위. 제안: `/Library`·`~/Library` 아래 사용자가 설치한
