@@ -8,7 +8,8 @@
 - 완료(2026-11-18): 사용자 Mac에서 sudo 없이 root 서비스를 탐지할 수 있는지 시험했다(요구사항의 확인된 사실).
 - 완료(2026-11-18): 기존 도구 검토. 사용자가 LeftOpen을 직접 시험했고 root로 띄운 서비스를 잡지 못했다.
 - 완료(2026-11-18): 계획 문서 4종 초안. 사용자 결정 DC-01(Tauri)·DC-02(서명 없이 시작)·DC-04~06을 반영했다.
-- 진행 중(2026-11-18): Phase 0 부트스트랩. 구현·Linux 검증·macOS CI 빌드 완료, 사용자 Mac 실행 확인이 남았다.
+- 완료(2026-11-18): Phase 0 부트스트랩. 사용자 Mac에서 메뉴바 아이콘·Dock 숨김·창 열고 닫기·종료를 확인했다.
+- 진행 중(2026-11-18): Phase 1 탐지 코어. 코어·수집기·probe 구현과 Linux 테스트 완료, Mac 확인이 남았다.
 - 탐지 기능은 아직 없다. 앱은 빈 목록만 보여준다.
 
 상세 계약을 바꾸면 요구사항·설계·단계·수동 기준을 같은 작업에서 갱신한다.
@@ -24,7 +25,7 @@
 | `npm run test:ui` | 가짜 스냅샷으로 화면 테스트 (Playwright) | Phase 2에서 만든다 |
 | `npm run build:mac` | `tauri build --bundles app`으로 .app 생성 | macOS CI(수동 실행), 사용자 Mac |
 
-## Phase 0 — 프로젝트 부트스트랩: 구현 완료, 사용자 Mac 확인 대기
+## Phase 0 — 프로젝트 부트스트랩: 완료
 
 Refs: RQ-07, RQ-10, RQ-11, DC-01, DC-03, DC-05, DC-06, DC-10, DC-19
 
@@ -43,7 +44,7 @@ Refs: RQ-07, RQ-10, RQ-11, DC-01, DC-03, DC-05, DC-06, DC-10, DC-19
 - [x] README에 개발 환경 준비와 서명 없는 빌드를 실행하는 방법을 썼다.
 - [x] AGENTS.md의 소스 규칙을 실제 구조에 맞췄다.
 - [x] macOS CI 빌드 성공 기록.
-- [ ] 사용자 Mac 실행 확인(종료 기준).
+- [x] 사용자 Mac 실행 확인(종료 기준). 2026-11-18 사용자 확인 "모두 잘됨".
 
 기준 검증: 이 개발 환경과 CI에서 `npm run check`·`npm test` 통과, macOS CI 빌드 성공.
 종료 기준: 사용자 Mac에서 CI artifact의 앱을 실행하면 메뉴바에 아이콘이 생기고 Dock 아이콘은 없다(M-05 일부).
@@ -64,7 +65,9 @@ CI 기록(2026-11-18, 커밋 `cdab5cf`):
   (`check:app` 35초, `build:mac` 61초, 캐시 없음).
 - 빌드 결과 확인: `Signature=adhoc`, `Format=app bundle with Mach-O thin (arm64)`, `LSUIElement`=true,
   `LSMinimumSystemVersion`=15.0. 앱 10.35 MiB, zip artifact 3.08 MB(14일 보관).
-- 아직 확인하지 않은 것: 실제 Mac에서의 실행·메뉴바 표시·Dock 숨김·팝오버 위치(종료 기준, 사용자 확인).
+- 사용자 Mac(macOS 15.6.1, arm64) 확인(2026-11-18): artifact 앱을 실행해 메뉴바 아이콘 표시, Dock 아이콘 없음,
+  왼쪽 클릭으로 아이콘 아래 창 열기와 바깥 클릭으로 닫기, 오른쪽 클릭 메뉴와 창 버튼으로 종료가 모두 됐다("모두 잘됨").
+  회사 보안 프로그램이 실행을 막지 않았다. M-05의 메뉴바·Dock 항목에 해당하며, 자동 갱신·한국어 항목은 Phase 2에서 본다.
 
 Files:
 - `.github/workflows/ci.yml` (added)
@@ -103,22 +106,29 @@ Files:
 - `ui/main.js` (added)
 - `ui/style.css` (added)
 
-## Phase 1 — 탐지 코어 (읽기 전용): 대기
+## Phase 1 — 탐지 코어 (읽기 전용): 진행 중
 
 Refs: RQ-02, RQ-03, RQ-04, PR-03, PR-04, DC-07, DC-08, DC-09, DC-11, DC-12, M-01, M-02, M-03, M-04
 
-진입 기준: Phase 0 완료.
+진입 기준: Phase 0 완료(2026-11-18).
 
-- [ ] `scripts/collect-mac-sample.sh`: 수집 명령의 원문을 모으고 사용자 이름·홈 경로·호스트 이름을 바꿔 출력한다.
-  사용자가 검토한 뒤 공유하며, 저장소에는 이를 바탕으로 만든 합성 자료만 넣는다.
-- [ ] 사용자 Mac 표본으로 `ps`의 pgid·lstart 형식과 `launchctl print gui/<uid>` 형식을 확인한다(DC-11).
-- [ ] 파서: netstat(헤더 기준 열 찾기), ps, `launchctl print` 목록·상세, lsof 작업 폴더.
-- [ ] 판별기: 설계의 판별 순서 1~9, listener 묶기, 분류(DC-12), 프로젝트 이름.
-- [ ] 스냅샷 계약 타입과 JSON 직렬화.
-- [ ] 수집기와 `portwatch-probe`: 명령을 절대 경로·`LC_ALL=C`로 실행하고 스냅샷 JSON을 출력한다. 실패한 명령은 warnings로 남긴다.
-- [ ] 합성 자료 F-01~F-06(수동 검증 문서 참고)과 판별 테스트.
+2026-11-18 계획 변경: 별도 셸 스크립트(`scripts/collect-mac-sample.sh`) 대신 `portwatch-probe --raw`가 사용자 이름·홈 경로를
+가린 원문을 출력한다. CI가 빌드한 실행 파일 하나로 탐지 결과와 원문 형식을 함께 확인하고, 가리기 로직도 테스트할 수 있기 때문이다.
 
-기준 검증: `npm test`의 파서·판별 테스트. F-01(root brew nginx: master·worker)이 `launchd-brew`·system·`nginx`·root로 판별된다.
+- [x] 파서(`parse.rs`): netstat(헤더 기준 열 찾기), ps(`-ww`, 고정 열 순서, `nobody`의 uid `-2` 처리), `launchctl print` 목록·상세, lsof 작업 폴더.
+- [x] 판별기(`resolve.rs`): 설계의 판별 순서, listener 묶기, 분류(DC-12 제안), 보호 이유, 제목, 정렬.
+  수집 두 단계를 위한 추가 조회 계획(`plan_lookups`)을 둔다.
+- [x] 프로젝트 규칙(`project.rs`)과 가리기(`privacy.rs`): 홈 경로·단어 단위 사용자 이름.
+- [x] 스냅샷 계약 보강: 프로세스의 pgid·uid·tty.
+- [x] 수집기: 명령을 절대 경로·`LC_ALL=C`·빈 환경으로 실행하고 5초 시간 제한을 둔다. 출력을 따로 읽어 파이프가 막히지 않게 한다.
+  실패한 명령은 warnings로 남긴다. 명령 실행(`Runner`)과 파일 확인(`Files`)을 바꿔 끼워 합성 자료로 수집 흐름 전체를 테스트한다.
+- [x] `portwatch-probe`: 기본은 분류별 표(`report.rs`), `--json`은 스냅샷, `--raw`는 가린 원문(`raw.rs`).
+- [x] 합성 자료 F-01~F-04·F-06과 판별·수집 테스트(F-02는 DC-11 확인 전까지 가정한 형식).
+- [x] 메뉴바 앱의 `get_snapshot`이 실제 수집을 별도 스레드에서 실행한다. 목록 화면은 Phase 2에서 만든다.
+- [x] macOS CI: artifact에 `portwatch-probe`를 함께 넣고(`archive: false`로 이중 압축 없앰), 실행기에서 probe를 한 번 돌린다.
+- [ ] 사용자 Mac에서 `portwatch-probe`와 `--raw` 결과로 DC-11(사용자 서비스 형식)·ps 형식을 확인하고 합성 자료를 맞춘다.
+
+기준 검증: `npm test`의 파서·판별·수집 흐름 테스트. F-01(root brew nginx: master·worker)이 `launchd-brew`·system·`nginx`·root로 판별된다.
 종료 기준: 사용자 Mac에서 `portwatch-probe` 결과가 M-01~M-04의 탐지 기준을 만족한다. DC-11·DC-12를 결과와 함께 닫는다.
 
 ## Phase 2 — 메뉴바 목록 화면: 대기
@@ -214,11 +224,12 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
 
 이 프로젝트의 현재 인계는 이 블록 하나다. 이전 내용은 git 이력에 남는다.
 
-- 현재 작업(2026-11-18): Phase 0 구현, Linux 검증, macOS CI 빌드(run 44276588647) 완료. 메뉴바 아이콘과 빈 팝오버 창이 있고 탐지 기능은 없다.
+- 현재 작업(2026-11-18): Phase 1 탐지 코어. 파서·판별기·수집기·`portwatch-probe` 구현과 Linux 테스트(34개) 완료.
+  메뉴바 앱은 실제 수집을 하지만 목록 화면은 Phase 2에서 만든다.
 - 확인된 사실: 사용자 Mac에서 sudo 없이 root nginx를 netstat·ps·launchctl로 판별할 수 있었다(REQUIREMENTS.md).
-  사용자 Mac은 macOS 15.6.1, arm64다.
+  사용자 Mac은 macOS 15.6.1, arm64다. Phase 0 앱 실행도 사용자 Mac에서 확인했다.
 - 사용자 결정: macOS 전용, 메뉴바 앱·brew 설치·Spotlight 실행, 문서 기반 개발과 `main`, Tauri, Apple 서명 없이 시작.
-- 다음: 사용자가 artifact 앱을 Mac에서 실행해 Phase 0 종료 기준을 확인한다. 그다음 Phase 1(탐지 코어)을 시작한다.
-- 후속 후보: `upload-artifact`의 `archive: false`로 zip이 이중으로 압축되지 않게 하는 것. 다음 macOS 빌드 때 함께 확인한다.
+- 다음: macOS CI(수동 실행)에서 실행기의 실제 출력으로 probe를 돌려 형식을 확인한다. 이어서 사용자가 artifact의
+  `portwatch-probe`와 `--raw` 결과를 공유하면 DC-11(사용자 서비스 형식)·DC-12(분류)를 닫고 Phase 1 종료 기준(M-01~M-04 탐지)을 확인한다.
 - 차단: Phase 5 전에 DC-18(비공개 저장소의 배포 위치)을 사용자가 정해야 한다. Phase 1~4에는 차단 없음.
-- 커밋: 계획 `4384fd2`, 그리고 이 인계를 포함한 Phase 0 커밋(`main`).
+- 커밋: 계획 `4384fd2`, Phase 0 `cdab5cf`·`79a25b8`, 그리고 이 인계를 포함한 Phase 1 구현 커밋(`main`).

@@ -3,6 +3,10 @@
 //! 명령 출력 텍스트를 받아 값을 돌려주는 순수 함수만 둔다.
 //! 프로세스 실행, 파일 시스템, 네트워크, macOS API를 쓰지 않는다.
 
+pub mod parse;
+pub mod privacy;
+pub mod project;
+pub mod resolve;
 pub mod snapshot;
 
 pub use snapshot::{

@@ -1,0 +1,14 @@
+system/com.vendor.agentd = {
+	active count = 1
+	path = /Library/LaunchDaemons/com.vendor.agentd.plist
+	type = LaunchDaemon
+	state = running
+
+	program = /Library/Application Support/Vendor/agentd
+	arguments = {
+		/Library/Application Support/Vendor/agentd
+		--serve
+	}
+
+	pid = 350
+}

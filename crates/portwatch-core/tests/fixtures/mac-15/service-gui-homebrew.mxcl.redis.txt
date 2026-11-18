@@ -1,0 +1,17 @@
+gui/501/homebrew.mxcl.redis = {
+	active count = 1
+	path = /Users/dev/Library/LaunchAgents/homebrew.mxcl.redis.plist
+	type = LaunchAgent
+	state = running
+
+	program = /opt/homebrew/opt/redis/bin/redis-server
+	arguments = {
+		/opt/homebrew/opt/redis/bin/redis-server
+		/opt/homebrew/etc/redis.conf
+	}
+
+	working directory = /opt/homebrew/var
+
+	domain = gui/501 [100001]
+	pid = 1300
+}

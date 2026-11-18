@@ -77,7 +77,7 @@ Entry            포트를 연 서버 하나 (프로세스 트리의 최상위 �
   category       dev-server | service | dev-tool | app | system
   manager        Manager
   listeners[]    { port, address, family, pid }
-  processes[]    { pid, ppid, user, startedAt, command }   최상위부터
+  processes[]    { pid, ppid, pgid, uid, user, tty, startedAt, command }   최상위와 그 아래 프로세스 (Phase 1에서 pgid·uid·tty 추가)
   project        { name, path } 또는 없음
   domains[]      { name, via, port, tls }   via: hosts | nginx | direct
   protection     멈추기를 막는 이유 (막지 않으면 없음)
@@ -103,7 +103,7 @@ brew는 `/opt/homebrew/bin/brew`와 `/usr/local/bin/brew`를 차례로 찾는다
 | 명령 (sudo 없음) | 얻는 정보 | 근거 |
 | --- | --- | --- |
 | `/usr/sbin/netstat -anv -p tcp` | 연결을 기다리는 포트와 PID. root·다른 사용자 포함 | 확인된 사실(2026-11-18) |
-| `/bin/ps -axo pid=,ppid=,pgid=,user=,lstart=,command=` | 부모·프로세스 그룹·사용자·시작 시각·명령줄 | 명령줄 읽기는 확인됨. pgid·lstart 형식은 Phase 1에서 확인 |
+| `/bin/ps -ww -axo pid=,ppid=,pgid=,uid=,tty=,user=,lstart=,command=` | 부모·프로세스 그룹·uid·터미널·사용자·시작 시각·명령줄 | 명령줄 읽기는 확인됨. 열 형식은 Phase 1에서 확인 |
 | `/bin/launchctl print system` | root 서비스의 PID → 라벨 표 | 확인된 사실 |
 | `/bin/launchctl print gui/<내 uid>` | 사용자 서비스의 PID → 라벨 표 | 형식 확인 필요(DC-11) |
 | `/bin/launchctl print <도메인>/<라벨>` | plist 경로·실행 파일·인수·작업 폴더 | 확인된 사실. 서비스 항목에만 실행 |
@@ -111,6 +111,13 @@ brew는 `/opt/homebrew/bin/brew`와 `/usr/local/bin/brew`를 차례로 찾는다
 | `docker ps --format '{{json .}}'` | 컨테이너 이름과 포트 연결 | Docker가 있을 때만. 형식은 DC-14 |
 | `/etc/hosts` 읽기 | 루프백을 가리키는 도메인 | Phase 4 |
 | nginx 설정 읽기 | server_name·listen·proxy_pass | 방식은 DC-15 |
+
+`-ww`가 필요하다: BSD `ps`는 출력이 터미널이 아니면 폭을 79칸으로 잡아 명령줄을 자른다. 사용자가 터미널에서 본 결과가
+잘리지 않은 것은 표준 오류가 터미널이었기 때문이고, 앱에서 실행하면 터미널이 없다.
+
+수집은 두 번에 나눈다. 먼저 netstat·ps·launchctl 목록 두 개를 함께 실행한다. 코어가 그 결과로 상세가 필요한
+launchd 라벨과 작업 폴더가 필요한 PID를 정하면, 그것만 `launchctl print <도메인>/<라벨>`과 `lsof` 한 번으로 더 읽는다.
+작업 폴더에서 프로젝트를 찾는 파일 확인은 수집기가 하고, `package.json`의 `name`을 읽는 해석은 코어가 한다.
 
 ### netstat 읽기
 
@@ -123,19 +130,22 @@ brew는 `/opt/homebrew/bin/brew`와 `/usr/local/bin/brew`를 차례로 찾는다
 
 ## 판별 순서
 
-listener마다 아래 순서로 관리 주체를 정한다. 먼저 맞는 규칙을 쓴다.
+listener마다 `ps` 정보로 부모를 따라 올라가 조상 목록을 만든다. 목록의 맨 위는 부모가 PID 1인 프로세스(뿌리)다.
+그다음 아래 순서로 관리 주체를 정한다. 먼저 맞는 규칙을 쓴다.
 
 1. PID가 1이면 `launchd-socket`이다. launchd가 직접 연 포트이며 항상 보호한다.
-2. `ps` 정보로 부모를 따라 올라가 조상 목록을 만든다. PID 1이나 셸에 닿으면 멈춘다.
-3. 조상 중 하나(자기 포함)가 launchd PID 표(system·user)에 있으면 launchd 서비스다.
-   그 라벨의 실행 파일이 brew 경로(`/opt/homebrew`, `/usr/local`) 아래면 `launchd-brew`, 아니면 `launchd-other`다.
+2. 뿌리가 launchd PID 표(system·user)에 있으면 launchd 서비스이고, 뿌리가 최상위다.
+   단 라벨이 `application.`으로 시작하면 서비스가 아니라 앱 실행 기록이므로 건너뛴다(Terminal·VS Code 같은 앱도 표에 있다).
+   상세 정보의 실행 파일이 brew 경로(`/opt/homebrew/`, `/usr/local/Cellar/`, `/usr/local/opt/`) 아래면 `launchd-brew`, 아니면 `launchd-other`다.
    포뮬러 이름은 실행 파일 경로의 `opt/<이름>/` 또는 `Cellar/<이름>/`에서 얻는다.
-4. listener가 Docker의 포트 전달 프로세스이면 `docker ps`의 포트 연결로 컨테이너를 찾는다(DC-14).
-5. 조상에 pm2 데몬(`PM2 … God Daemon`)이 있으면 `pm2`다.
-6. 조상에 터미널 셸이 있으면 `terminal`이다. 셸 바로 아래 프로세스를 최상위로 삼는다.
-7. 조상이 `.app` 번들 안의 프로세스이면 `app`이다. 그 앱 바로 아래 프로세스를 최상위로 삼는다(예: 에디터에서 띄운 서버).
-8. 부모가 PID 1인데 launchd 표에 없으면 `detached`다(`nohup`·`&`·`disown`으로 띄운 경우).
-9. 나머지는 `unknown`이다.
+3. Docker의 포트 전달 프로세스이면 `docker ps`의 포트 연결로 컨테이너를 찾는다(DC-14, Phase 3에서 구현).
+4. 조상에 pm2 데몬(`PM2 … God Daemon`)이 있으면 `pm2`다. 데몬 바로 아래 프로세스가 최상위다.
+5. 조상에 셸(`zsh`·`bash`·`sh`·`fish` 등)이 있으면 `terminal`이다. 뿌리에 가장 가까운 셸을 찾고, 그 아래로 셸이 이어지면 건너뛴 뒤
+   처음 나오는 셸이 아닌 프로세스를 최상위로 삼는다. `npm run dev` 아래의 `sh -c vite` 같은 셸은 이 규칙에 영향을 주지 않는다.
+6. 조상에 `.app/Contents/` 경로의 프로세스가 있으면 `app`이다. listener 자신이 앱 프로세스면 가장 위의 앱 프로세스가 최상위이고,
+   앱 아래에서 띄운 일반 프로세스(예: 에디터가 띄운 서버)면 가장 아래 앱 프로세스의 바로 아래 프로세스가 최상위다.
+7. 뿌리의 부모가 PID 1인데 위 규칙에 맞지 않으면 `detached`다(`nohup`·`&`·`disown`으로 띄운 경우). 뿌리가 최상위다.
+8. 나머지는 `unknown`이다.
 
 라벨 이름 규칙(`homebrew.mxcl.*`, `sh.brew.*`)이나 `ps` 명령줄 글자로 서비스를 맞추지 않는다(DC-09).
 같은 최상위 프로세스에 속한 listener는 한 Entry로 묶는다.
@@ -146,19 +156,49 @@ listener마다 아래 순서로 관리 주체를 정한다. 먼저 맞는 규칙
 
 | 분류 | 규칙 (제안) | 기본 화면 |
 | --- | --- | --- |
-| system | PID 1, 실행 파일이 `/System`·`/usr/libexec`·`/usr/sbin`·`/sbin` 아래, 보안 프로그램 목록에 있음 | 접힘, 멈추기 금지 |
-| service | `launchd-brew`, 보호되지 않는 `launchd-other` | 펼침 |
-| dev-server | `terminal`·`detached`·`pm2`·`docker`·`app`(에디터) 관리이고, 루프백 임시 포트(49152~65535)만 열지 않음 | 펼침 |
-| dev-tool | 사용자 프로세스가 루프백 임시 포트만 엶(도구 사이 통신으로 추정) | 접힘 |
+| system | `launchd-socket`; 조상 중 보안 프로그램 목록과 이름이 맞는 프로세스가 있음; system 도메인의 `launchd-other`;
+`com.apple.` 라벨; `app`(앱 자체)·`detached`·`unknown` 중 실행 파일이 `/System/`·`/usr/libexec/`·`/usr/sbin/`·`/sbin/` 아래 | 접힘, 멈추기 금지 |
+| service | `launchd-brew`, user 도메인의 `launchd-other` | 펼침 |
+| dev-server | `terminal`·`detached`·`pm2`·`docker`·앱 아래에서 띄운 프로세스이고, 루프백 임시 포트만 열지 않음 | 펼침 |
+| dev-tool | 위 dev-server 조건이지만 루프백 주소(`127.*`, `::1`)의 임시 포트(49152~65535)만 엶(도구 사이 통신으로 추정). user 도메인 `launchd-other`도 같다 | 접힘 |
 | app | `.app` 번들 프로세스 자체가 포트를 엶 | 접힘 |
 
-보안 프로그램 목록은 기본값을 두고 사용자가 고칠 수 있게 한다. 사용자는 항목을 "개발 서버로 고정"하거나 숨길 수 있다.
+system 도메인의 `launchd-other`를 system으로 보는 이유: 개발용 root 서비스는 대부분 brew로 띄우고(`launchd-brew`),
+그 밖의 system 도메인 서비스는 보안 에이전트 같은 외부 프로그램이었다(2026-11-18 관찰: root로 도는 21300·29919·39919번 등).
+
+보안 프로그램 목록은 기본값을 두고 사용자가 고칠 수 있게 한다(설정 화면은 Phase 2). 기본값은 널리 알려진 국내 금융·인증 보안
+프로그램 이름(예: veraport, CrossEX, AnySign, nProtect, TouchEn)이며 실행 파일 이름에 대소문자 구분 없이 포함되는지로 맞춘다.
+사용자는 항목을 "개발 서버로 고정"하거나 숨길 수 있다(Phase 2).
+
+### 보호 이유
+
+판별 단계에서 `protection`을 채운다. 멈추기 버튼은 Phase 3에서 이 값을 따른다.
+
+| 조건 | 이유 문구 |
+| --- | --- |
+| `launchd-socket` | launchd가 직접 연 포트입니다. |
+| system 분류 | 시스템·보안 프로그램입니다. |
+| 최상위가 portwatch 자신 | portwatch 자신입니다. |
+| 최상위가 root·현재 사용자가 아닌 사용자 | 다른 사용자의 프로세스입니다. |
+| 최상위가 root이고 `launchd-brew`가 아님 | root로 실행 중인 프로세스입니다. |
+| user 도메인 `launchd-other` | brew가 아닌 launchd 서비스는 아직 멈추지 않습니다(DC-13). |
+
+### 진단 도구
+
+`portwatch-probe`는 화면 없이 수집을 한 번 실행한다. 기본 출력은 분류별 표, `--json`은 스냅샷 JSON,
+`--raw`는 수집 명령의 원문이다. `--raw`는 사용자 이름을 `<user>`, 홈 경로를 `~`로 바꾸고, ps·launchctl 목록은
+listener와 그 조상에 해당하는 줄과 형식 확인용 앞부분만 남긴다. 사용자가 출력 형식을 공유할 때 쓴다.
 
 ### 프로젝트 이름
 
-`lsof`로 얻은 작업 폴더에서 위로 올라가며 `package.json`·`.git`·`pyproject.toml`·`Cargo.toml`·`go.mod`·`pom.xml`·`build.gradle`을 찾는다.
-`package.json`의 `name`이 있으면 그 이름을, 없으면 폴더 이름을 쓴다. 홈 폴더에 닿으면 멈춘다.
-root 프로세스는 작업 폴더를 읽지 못하므로 launchd 정보의 작업 폴더를 쓴다.
+`lsof`로 얻은 작업 폴더에서 위로 올라가며 `package.json`·`.git`·`pyproject.toml`·`Cargo.toml`·`go.mod`·`pom.xml`·`build.gradle`·
+`build.gradle.kts`·`Gemfile`·`composer.json`을 찾는다. 가장 가까운 폴더가 프로젝트다. 그 폴더의 `package.json`에 `name`이 있으면
+그 이름을, 없으면 폴더 이름을 쓴다. 홈 폴더와 `/`에는 올라가지 않는다. listener 프로세스의 작업 폴더를 먼저 쓰고, 없으면 최상위의 것을 쓴다.
+launchd 서비스와 앱 자체는 프로젝트를 표시하지 않는다. root 서비스는 작업 폴더를 읽을 수 없고, brew 서비스의 작업 폴더
+(`/opt/homebrew/var` 등)는 Homebrew 저장소 안이라 프로젝트로 잡으면 틀린다.
+
+항목 제목은 brew 서비스면 포뮬러, 그 밖의 launchd 서비스면 라벨, 앱이면 앱 이름, 나머지는 프로젝트 이름이고 없으면
+listener 실행 파일 이름이다. 항목은 분류 순서(개발 서버, 서비스, 개발 도구, 앱, 시스템)와 가장 작은 포트 순으로 정렬한다.
 
 ## 멈추기
 
@@ -281,7 +321,8 @@ portwatch                              3초 전 갱신
   Phase 0 실측: 캐시 없는 macOS 작업 전체가 약 1분 45초였다(run 44276588647). 코드가 커지면 다시 잰다.
   사용자가 비용 기준을 바꾸면 이 결정을 다시 연다. 검증: Phase 0 CI 실행 기록.
 - [ ] DC-11: 사용자 서비스 `launchctl print gui/<uid>`의 형식이 system과 같은지. Phase 1에서 사용자 Mac으로 확인한다.
-- [ ] DC-12: 분류 규칙(임시 포트 범위, 보안 프로그램 기본 목록, 실행 파일 경로 규칙). Phase 1에서 합성 자료로 확정한다.
+- [ ] DC-12: 분류 규칙(임시 포트 범위, 보안 프로그램 기본 목록, 실행 파일 경로 규칙). Phase 1에서 위 "분류" 절대로 구현하고
+  합성 자료로 검증했다. 사용자 Mac의 `portwatch-probe` 결과로 잡음이 기본 화면에 남지 않는지 확인한 뒤 닫는다.
 - [ ] DC-13: brew가 아닌 launchd 서비스를 멈출 수 있게 할지와 범위. 제안: `/Library`·`~/Library` 아래 사용자가 설치한
   plist만 허용하고 Apple 서비스는 막는다. Phase 3.
 - [ ] DC-14: Docker Desktop(또는 OrbStack·colima)에서 포트를 여는 프로세스 형식과 컨테이너 연결 방법. Phase 3에서 사용자 Mac으로 확인한다.

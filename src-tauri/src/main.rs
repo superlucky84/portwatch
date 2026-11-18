@@ -25,9 +25,12 @@ struct PopoverState {
     hidden_by_blur_at: Mutex<Option<Instant>>,
 }
 
+/// 수집은 명령 여러 개를 실행하므로 메인 스레드를 막지 않게 별도 스레드에서 돌린다.
 #[tauri::command]
-fn get_snapshot() -> Snapshot {
-    portwatch_collect::collect_snapshot()
+async fn get_snapshot() -> Result<Snapshot, String> {
+    tauri::async_runtime::spawn_blocking(portwatch_collect::collect_snapshot)
+        .await
+        .map_err(|error| format!("수집 작업이 중단됐습니다: {error}"))
 }
 
 #[tauri::command]

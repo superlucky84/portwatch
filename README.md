@@ -2,7 +2,7 @@
 
 로컬 개발 서버를 한곳에서 보고 멈추는 macOS 메뉴바 앱입니다.
 
-> 개발 초기 단계입니다. 지금은 메뉴바 아이콘과 빈 목록 창만 있고, 탐지 기능은 아직 없습니다.
+> 개발 초기 단계입니다. 탐지 기능은 `portwatch-probe`로 확인할 수 있고, 메뉴바 창의 목록 화면은 아직 없습니다.
 
 ## 무엇을 하나요
 
@@ -55,7 +55,7 @@ npm run build:mac
 ### CI에서 빌드한 앱 실행하기
 
 macOS 빌드는 비용 때문에 수동으로만 돌립니다. GitHub의 Actions 탭에서 **CI → Run workflow**를 실행하면
-`portwatch-macos-arm64` artifact가 생깁니다. 내려받은 파일은 압축 안에 압축이 들어 있어 두 번 풀어야 할 수 있습니다.
+`portwatch-macos-arm64` artifact(zip)가 생깁니다. 압축을 풀면 `portwatch.app`과 `portwatch-probe`가 있습니다.
 
 Apple 서명이 없어서 첫 실행을 macOS가 막습니다. **시스템 설정 → 개인정보 보호 및 보안**에서 **그래도 열기**를 누르세요.
 직접 빌드한 본인 앱이라면 터미널에서 격리 표시를 지워도 됩니다.
@@ -65,6 +65,28 @@ xattr -dr com.apple.quarantine /Applications/portwatch.app
 ```
 
 실행하면 Dock 아이콘 없이 메뉴바에 고리 모양 아이콘이 생깁니다. 왼쪽 클릭은 목록 창, 오른쪽 클릭은 종료 메뉴입니다.
+
+### 탐지 결과 확인하기 (`portwatch-probe`)
+
+artifact에는 화면 없이 탐지 결과를 출력하는 `portwatch-probe`도 들어 있습니다. 내려받은 파일이라 격리 표시를 먼저 지웁니다.
+
+```bash
+xattr -d com.apple.quarantine ./portwatch-probe
+```
+
+분류별 표로 봅니다. 홈 경로는 `~`로 표시합니다.
+
+```bash
+./portwatch-probe
+```
+
+출력 형식 확인용 원문입니다. 사용자 이름은 `<user>`, 홈 경로는 `~`로 가리고, 포트를 연 프로세스와 그 부모에 관한 줄만 남깁니다.
+
+```bash
+./portwatch-probe --raw
+```
+
+`--json`은 앱이 받는 스냅샷 JSON을 그대로 출력합니다.
 
 ## 계획한 설치 방법
 

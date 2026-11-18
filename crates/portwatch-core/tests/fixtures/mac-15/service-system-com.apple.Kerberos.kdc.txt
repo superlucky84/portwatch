@@ -1,0 +1,13 @@
+system/com.apple.Kerberos.kdc = {
+	active count = 1
+	path = /System/Library/LaunchDaemons/com.apple.Kerberos.kdc.plist
+	type = LaunchDaemon
+	state = running
+
+	program = /usr/sbin/kdc
+	arguments = {
+		/usr/sbin/kdc
+	}
+
+	pid = 147
+}

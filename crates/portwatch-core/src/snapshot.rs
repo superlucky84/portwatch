@@ -102,7 +102,12 @@ pub struct Listener {
 pub struct ProcessInfo {
     pub pid: u32,
     pub ppid: u32,
+    /// 프로세스 그룹. 터미널 서버를 멈출 때 그룹 단위로 신호를 보낸다.
+    pub pgid: u32,
+    pub uid: u32,
     pub user: String,
+    /// 터미널 이름. 터미널이 없으면 `??`.
+    pub tty: String,
     /// ps가 보여준 시작 시각 원문. PID 재사용을 가려내는 데 쓴다.
     pub started_at: String,
     pub command: String,

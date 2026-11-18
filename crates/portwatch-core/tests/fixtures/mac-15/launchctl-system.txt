@@ -1,0 +1,45 @@
+system = {
+	type = system
+	handle = 0
+	active count = 412
+	service count = 380
+	active service count = 190
+	maximum allowed shutdown time = 65 s
+	service stats = 0
+	creator = launchd[1]
+	creator euid = 0
+	security context = {
+		uid unset
+		asid = 0
+	}
+
+	subdomains = {
+		pid/147
+	}
+
+	services = {
+		       0      -         com.apple.example.idle
+		     147      -         com.apple.Kerberos.kdc
+		     350      -         com.vendor.agentd
+		    1100      -         sh.brew.nginx
+		       0     78         com.apple.example.exited
+	}
+
+	unmanaged processes = {
+		com.apple.xpc.launchd.unmanaged.loginwindow.123 = {
+			active count = 1
+		}
+	}
+
+	endpoints = {
+		"com.apple.example.xpc" = {
+			port = 0x1234
+			active = 1
+		}
+	}
+
+	disabled services = {
+		"com.apple.ftpd" => disabled
+		"sh.brew.nginx" => enabled
+	}
+}

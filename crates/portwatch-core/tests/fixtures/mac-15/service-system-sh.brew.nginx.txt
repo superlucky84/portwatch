@@ -1,0 +1,26 @@
+system/sh.brew.nginx = {
+	active count = 1
+	path = /Library/LaunchDaemons/sh.brew.nginx.plist
+	type = LaunchDaemon
+	state = running
+
+	program = /opt/homebrew/opt/nginx/bin/nginx
+	arguments = {
+		/opt/homebrew/opt/nginx/bin/nginx
+		-g
+		daemon off;
+	}
+
+	working directory = /opt/homebrew
+
+	default environment = {
+		PATH => /usr/bin:/bin:/usr/sbin:/sbin
+	}
+
+	domain = system
+	minimum runtime = 10
+	base minimum runtime = 10
+	exit timeout = 5
+	runatload = 1
+	pid = 1100
+}

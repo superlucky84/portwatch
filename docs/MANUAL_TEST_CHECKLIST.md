@@ -10,7 +10,8 @@
 
 자동 테스트는 아래 합성 자료를 쓴다. 형식은 2026-11-18 사용자 Mac 관찰을 따르되,
 사용자 이름·실제 PID·사내 정보·실제 출력 원문은 넣지 않는다. 도메인은 `.test`만 쓴다.
-파일 위치는 Phase 1에서 `crates/portwatch-core/tests/fixtures/`로 만든다(계획).
+F-01~F-04·F-06은 한 대의 가상 Mac 상태로 묶어 `crates/portwatch-core/tests/fixtures/mac-15/`에 명령별 출력 파일로 둔다.
+코어의 `tests/mac_fixtures.rs`가 시나리오별로, 수집기 테스트가 같은 파일로 수집 흐름 전체를 검증한다. 사용자 이름은 `dev`, uid는 501이다.
 
 | ID | 상황 | 들어가는 출력 |
 | --- | --- | --- |

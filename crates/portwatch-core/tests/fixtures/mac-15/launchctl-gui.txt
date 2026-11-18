@@ -1,0 +1,19 @@
+gui/501 = {
+	type = gui
+	handle = 501
+	active count = 220
+	service count = 410
+	creator = loginwindow[300]
+
+	services = {
+		       0      -         com.apple.example.agent
+		     600      -         application.example.veraport.11.12
+		     700      -         application.example.player.13.14
+		     900      -         application.com.apple.Terminal.15.16
+		    1300      -         homebrew.mxcl.redis
+	}
+
+	disabled services = {
+		"homebrew.mxcl.redis" => enabled
+	}
+}

@@ -50,6 +50,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run check:app
       - run: npm run build:mac
+      - run: cargo build --release -p portwatch-collect --bin portwatch-probe
       - name: 빌드 결과 확인
         run: |
           app=target/release/bundle/macos/portwatch.app
@@ -57,9 +58,22 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$app/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist"
           lipo -archs "$app/Contents/MacOS/portwatch"
-          ditto -c -k --keepParent "$app" portwatch-macos-arm64.zip
+      # 실행기의 실제 macOS 출력으로 탐지 흐름을 한 번 돌려 본다. 실행기에는 개인 정보가 없다.
+      - name: 실행기에서 portwatch-probe 실행
+        run: |
+          sw_vers -productVersion
+          target/release/portwatch-probe
+          target/release/portwatch-probe --raw
+      - name: 묶기
+        run: |
+          mkdir -p dist/portwatch-macos-arm64
+          ditto target/release/bundle/macos/portwatch.app dist/portwatch-macos-arm64/portwatch.app
+          cp target/release/portwatch-probe dist/portwatch-macos-arm64/
+          ditto -c -k --keepParent dist/portwatch-macos-arm64 portwatch-macos-arm64.zip
       - uses: actions/upload-artifact@v7
         with:
           name: portwatch-macos-arm64
           path: portwatch-macos-arm64.zip
+          # zip을 한 번 더 압축하지 않고 그대로 올린다.
+          archive: false
           retention-days: 14
