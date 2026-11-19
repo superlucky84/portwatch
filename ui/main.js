@@ -1,61 +1,426 @@
-// 메뉴바 팝오버 화면. 셸이 넘겨준 스냅샷만 그린다(docs/DESIGN.md "스냅샷 계약").
+// 메뉴바 팝오버 화면. 셸이 보낸 스냅샷을 그리고, 고정 명령만 부른다(docs/DESIGN.md "화면과 갱신").
+// 외부 문자열은 모두 textContent로 넣는다.
 
-const invoke = window.__TAURI__?.core?.invoke;
+import {
+  GROUPS,
+  contentSignature,
+  describeKey,
+  entryUrl,
+  formatTime,
+  groupOf,
+  managerLabel,
+  portsText,
+} from './view.js';
 
-const listElement = document.getElementById('list');
-const updatedElement = document.getElementById('updated');
-const warningsElement = document.getElementById('warnings');
+const tauri = window.__TAURI__;
+const invoke = tauri?.core?.invoke;
+const listen = tauri?.event?.listen;
 
-function formatTime(ms) {
-  const time = new Date(ms);
-  return [time.getHours(), time.getMinutes(), time.getSeconds()]
-    .map((part) => String(part).padStart(2, '0'))
-    .join(':');
+const $ = (id) => document.getElementById(id);
+const listElement = $('list');
+const settingsElement = $('settings');
+const warningsElement = $('warnings');
+const statusElement = $('status');
+
+// 웹뷰 저장소는 막혀 있을 수 있으므로 실패를 무시한다.
+const saved = {
+  read(key, fallback) {
+    try {
+      const value = JSON.parse(window.localStorage.getItem(key));
+      return value ?? fallback;
+    } catch {
+      return fallback;
+    }
+  },
+  write(key, value) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // 저장하지 못해도 화면은 동작한다.
+    }
+  },
+};
+
+const ui = {
+  snapshot: null,
+  signature: '',
+  expanded: new Set(saved.read('portwatch.expanded', [])),
+  groupOpen: saved.read('portwatch.groupOpen', {}),
+  settings: null,
+  choices: { open: [], closed: [] },
+  defaultSecurityNames: [],
+};
+
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) {
+    node.className = className;
+  }
+  if (text !== undefined) {
+    node.textContent = text;
+  }
+  return node;
+}
+
+let statusTimer = 0;
+function showStatus(text) {
+  statusElement.textContent = text;
+  window.clearTimeout(statusTimer);
+  statusTimer = window.setTimeout(() => {
+    statusTimer = 0;
+    statusElement.textContent = ui.snapshot ? `수집 ${ui.snapshot.collectMs} ms` : '';
+  }, 2500);
+}
+
+async function call(command, args) {
+  try {
+    return await invoke(command, args);
+  } catch (error) {
+    showStatus(String(error));
+    throw error;
+  }
+}
+
+function isGroupOpen(group) {
+  return ui.groupOpen[group.id] ?? group.open;
+}
+
+function actionButton(label, action, key, extra = {}) {
+  const button = element('button', 'action', label);
+  button.type = 'button';
+  button.dataset.action = action;
+  button.dataset.key = key;
+  Object.assign(button.dataset, extra);
+  return button;
+}
+
+function detailRow(label, value) {
+  const row = element('div', 'detail-row');
+  row.append(element('span', 'detail-label', label), element('span', 'detail-value', value));
+  return row;
+}
+
+function buildDetail(entry) {
+  const detail = element('div', 'entry-detail');
+  detail.hidden = !ui.expanded.has(entry.key);
+  if (entry.project) {
+    detail.append(detailRow('프로젝트', entry.project.path));
+  }
+  if (entry.manager.label) {
+    detail.append(detailRow('라벨', entry.manager.label));
+  }
+  if (entry.processes[0]) {
+    detail.append(detailRow('시작', entry.processes[0].startedAt));
+  }
+  if (entry.protection) {
+    detail.append(detailRow('보호', entry.protection.reason));
+  }
+
+  const processes = element('ul', 'processes');
+  for (const process of entry.processes.slice(0, 8)) {
+    const item = element('li', 'process');
+    item.title = process.command;
+    item.append(
+      element('span', 'pid', String(process.pid)),
+      element('span', 'user', process.user),
+      element('span', 'command', process.command),
+    );
+    processes.append(item);
+  }
+  if (entry.processes.length > 8) {
+    processes.append(element('li', 'muted', `외 ${entry.processes.length - 8}개`));
+  }
+  detail.append(processes);
+
+  const actions = element('div', 'buttons');
+  const url = entryUrl(entry);
+  if (url) {
+    actions.append(
+      actionButton('열기', 'open', entry.key, { url }),
+      actionButton('URL 복사', 'copy', entry.key, { url }),
+    );
+  }
+  actions.append(
+    entry.hidden
+      ? actionButton('다시 보이기', 'unhide', entry.key)
+      : actionButton('숨기기', 'hide', entry.key),
+    entry.pinned
+      ? actionButton('고정 해제', 'unpin', entry.key)
+      : actionButton('개발 서버로 고정', 'pin', entry.key),
+  );
+  detail.append(actions);
+  return detail;
+}
+
+function buildEntry(entry) {
+  const article = element('article', 'entry');
+  article.dataset.key = entry.key;
+
+  const head = element('button', 'entry-head');
+  head.type = 'button';
+  head.dataset.action = 'toggle-entry';
+  head.dataset.key = entry.key;
+  head.setAttribute('aria-expanded', String(ui.expanded.has(entry.key)));
+
+  const badges = element('span', 'badges');
+  badges.append(element('span', 'badge', managerLabel(entry)));
+  if (entry.manager.runsAsRoot) {
+    badges.append(element('span', 'badge root', 'root'));
+  }
+  if (entry.pinned) {
+    badges.append(element('span', 'badge pinned', '고정'));
+  }
+  head.append(
+    element('span', 'title', entry.title),
+    element('span', 'ports', portsText(entry)),
+    badges,
+  );
+  article.append(head, buildDetail(entry));
+  return article;
+}
+
+function buildGroup(group, entries) {
+  const section = element('section', 'group');
+  section.dataset.group = group.id;
+  const open = isGroupOpen(group);
+
+  const head = element('button', 'group-head');
+  head.type = 'button';
+  head.dataset.action = 'toggle-group';
+  head.dataset.group = group.id;
+  head.setAttribute('aria-expanded', String(open));
+  head.append(
+    element('span', 'chevron', open ? '▾' : '▸'),
+    element('span', 'group-name', group.name),
+    element('span', 'count', String(entries.length)),
+  );
+
+  const body = element('div', 'group-body');
+  body.hidden = !open;
+  body.append(...entries.map(buildEntry));
+  section.append(head, body);
+  return section;
 }
 
 function renderMessage(text) {
-  listElement.replaceChildren();
-  const message = document.createElement('p');
-  message.className = 'empty';
-  message.textContent = text;
-  listElement.append(message);
+  listElement.replaceChildren(element('p', 'empty', text));
+}
+
+function renderList() {
+  const snapshot = ui.snapshot;
+  if (!snapshot) {
+    return;
+  }
+  const groups = GROUPS.map((group) => ({
+    group,
+    entries: snapshot.entries.filter((entry) => groupOf(entry) === group.id),
+  })).filter(({ entries }) => entries.length > 0);
+
+  const scrollTop = listElement.scrollTop;
+  if (groups.length === 0) {
+    renderMessage('포트를 연 서버가 없습니다.');
+  } else {
+    listElement.replaceChildren(...groups.map(({ group, entries }) => buildGroup(group, entries)));
+  }
+  listElement.scrollTop = scrollTop;
 }
 
 function renderWarnings(warnings) {
-  warningsElement.replaceChildren(
-    ...warnings.map((warning) => {
-      const item = document.createElement('li');
-      item.textContent = warning;
-      return item;
-    }),
-  );
+  warningsElement.replaceChildren(...warnings.map((warning) => element('li', '', warning)));
   warningsElement.hidden = warnings.length === 0;
 }
 
-function renderSnapshot(snapshot) {
-  updatedElement.textContent = `${formatTime(snapshot.takenAtMs)} 갱신`;
-  renderWarnings(snapshot.warnings);
-  if (snapshot.entries.length === 0) {
-    renderMessage('아직 표시할 항목이 없습니다. 탐지 기능은 다음 단계에서 추가됩니다.');
+function applySnapshot(snapshot) {
+  if (!snapshot) {
     return;
   }
-  renderMessage(`항목 ${snapshot.entries.length}개`);
+  $('updated').textContent = `${formatTime(snapshot.takenAtMs)} 갱신`;
+  renderWarnings(snapshot.warnings);
+  const signature = contentSignature(snapshot);
+  ui.snapshot = snapshot;
+  if (!statusTimer) {
+    statusElement.textContent = `수집 ${snapshot.collectMs} ms`;
+  }
+  if (signature === ui.signature) {
+    return;
+  }
+  ui.signature = signature;
+  renderList();
 }
 
-async function load() {
-  if (!invoke) {
+function toggleEntry(button) {
+  const key = button.dataset.key;
+  const open = !ui.expanded.has(key);
+  if (open) {
+    ui.expanded.add(key);
+  } else {
+    ui.expanded.delete(key);
+  }
+  saved.write('portwatch.expanded', [...ui.expanded]);
+  button.setAttribute('aria-expanded', String(open));
+  button.nextElementSibling.hidden = !open;
+}
+
+function toggleGroup(button) {
+  const group = GROUPS.find((candidate) => candidate.id === button.dataset.group);
+  const open = !isGroupOpen(group);
+  ui.groupOpen[group.id] = open;
+  saved.write('portwatch.groupOpen', ui.groupOpen);
+  button.setAttribute('aria-expanded', String(open));
+  button.querySelector('.chevron').textContent = open ? '▾' : '▸';
+  button.nextElementSibling.hidden = !open;
+}
+
+async function handleListClick(event) {
+  const button = event.target.closest('button[data-action]');
+  if (!button) {
+    return;
+  }
+  const { action, key, url } = button.dataset;
+  switch (action) {
+    case 'toggle-entry':
+      toggleEntry(button);
+      break;
+    case 'toggle-group':
+      toggleGroup(button);
+      break;
+    case 'open':
+      await call('open_url', { url });
+      break;
+    case 'copy':
+      await call('copy_text', { text: url });
+      showStatus('URL을 복사했습니다.');
+      break;
+    case 'hide':
+    case 'unhide':
+      ui.settings = await call('set_hidden', { key, hidden: action === 'hide' });
+      renderSettings();
+      break;
+    case 'pin':
+    case 'unpin':
+      ui.settings = await call('set_pinned', { key, pinned: action === 'pin' });
+      renderSettings();
+      break;
+    default:
+      break;
+  }
+}
+
+function fillSelect(select, choices, value) {
+  select.replaceChildren(
+    ...choices.map((seconds) => {
+      const option = element('option', '', `${seconds}초마다`);
+      option.value = String(seconds);
+      option.selected = seconds === value;
+      return option;
+    }),
+  );
+}
+
+function renderSettings() {
+  const settings = ui.settings;
+  if (!settings) {
+    return;
+  }
+  fillSelect($('refresh-open'), ui.choices.open, settings.refreshOpenSecs);
+  fillSelect($('refresh-closed'), ui.choices.closed, settings.refreshClosedSecs);
+  $('security-names').value = (settings.securityNames ?? ui.defaultSecurityNames).join('\n');
+
+  const kept = [
+    ...settings.hidden.map((key) => ({ key, label: '숨김', action: 'unhide', button: '다시 보이기' })),
+    ...settings.pinned.map((key) => ({ key, label: '고정', action: 'unpin', button: '고정 해제' })),
+  ];
+  $('kept-keys').replaceChildren(
+    ...(kept.length === 0
+      ? [element('li', 'muted', '없습니다.')]
+      : kept.map(({ key, label, action, button }) => {
+          const item = element('li', 'kept-item');
+          item.append(
+            element('span', 'badge', label),
+            element('span', 'kept-key', describeKey(key)),
+            actionButton(button, action, key),
+          );
+          return item;
+        })),
+  );
+}
+
+async function updateSettings(update) {
+  ui.settings = await call('update_settings', { update });
+  renderSettings();
+  showStatus('설정을 저장했습니다.');
+}
+
+function showSettings(open) {
+  settingsElement.hidden = !open;
+  listElement.hidden = open;
+  if (open) {
+    renderSettings();
+    $('close-settings').focus();
+  }
+}
+
+function bindEvents() {
+  listElement.addEventListener('click', handleListClick);
+  $('kept-keys').addEventListener('click', handleListClick);
+  $('refresh').addEventListener('click', () => call('refresh_now'));
+  $('quit').addEventListener('click', () => call('quit_app'));
+  $('open-settings').addEventListener('click', () => showSettings(true));
+  $('close-settings').addEventListener('click', () => showSettings(false));
+
+  $('launch-at-login').addEventListener('change', async (event) => {
+    const checkbox = event.target;
+    try {
+      checkbox.checked = await call('set_launch_at_login', { enabled: checkbox.checked });
+    } catch {
+      checkbox.checked = !checkbox.checked;
+    }
+  });
+  $('refresh-open').addEventListener('change', (event) =>
+    updateSettings({ refreshOpenSecs: Number(event.target.value) }),
+  );
+  $('refresh-closed').addEventListener('change', (event) =>
+    updateSettings({ refreshClosedSecs: Number(event.target.value) }),
+  );
+  $('save-security').addEventListener('click', () => {
+    const names = $('security-names')
+      .value.split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    return updateSettings({ securityNames: names });
+  });
+  $('reset-security').addEventListener('click', () => updateSettings({ resetSecurityNames: true }));
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') {
+      return;
+    }
+    if (!settingsElement.hidden) {
+      showSettings(false);
+    } else {
+      call('hide_popover');
+    }
+  });
+}
+
+async function init() {
+  if (!invoke || !listen) {
     renderMessage('portwatch 앱 안에서 열어야 합니다.');
     return;
   }
-  try {
-    renderSnapshot(await invoke('get_snapshot'));
-  } catch (error) {
-    renderMessage(`목록을 가져오지 못했습니다: ${error}`);
+  bindEvents();
+  await listen('snapshot', (event) => applySnapshot(event.payload));
+  const state = await call('get_state');
+  ui.settings = state.settings;
+  ui.choices = { open: state.openChoices, closed: state.closedChoices };
+  ui.defaultSecurityNames = state.defaultSecurityNames;
+  $('launch-at-login').checked = state.launchAtLogin;
+  renderSettings();
+  if (state.snapshot) {
+    applySnapshot(state.snapshot);
+  } else {
+    renderMessage('수집하는 중입니다…');
   }
 }
 
-document.getElementById('refresh').addEventListener('click', load);
-document.getElementById('quit').addEventListener('click', () => invoke?.('quit_app'));
-window.addEventListener('focus', load);
-
-load();
+init();

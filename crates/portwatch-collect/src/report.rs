@@ -83,9 +83,10 @@ fn user_label(name: &str, current: &str) -> String {
 pub fn render_table(snapshot: &Snapshot, home: &str, user: &str) -> String {
     let hide = |text: &str| sanitize(text, home, "");
     let mut lines = vec![format!(
-        "portwatch 탐지 결과: 항목 {}개, 경고 {}개",
+        "portwatch 탐지 결과: 항목 {}개, 경고 {}개, 수집 {} ms",
         snapshot.entries.len(),
-        snapshot.warnings.len()
+        snapshot.warnings.len(),
+        snapshot.collect_ms
     )];
     for warning in &snapshot.warnings {
         lines.push(format!("  경고: {}", hide(warning)));
@@ -142,7 +143,7 @@ mod tests {
         let snapshot = collect_with(&FakeRunner::default(), &files(), &env());
         let table = render_table(&snapshot, "/Users/dev", "dev");
         println!("{table}");
-        assert!(table.starts_with("portwatch 탐지 결과: 항목 15개, 경고 0개"));
+        assert!(table.starts_with("portwatch 탐지 결과: 항목 15개, 경고 0개, 수집 "));
         assert!(table.contains("[개발 서버]\n  api-server  :3000 로컬  (터미널)"));
         assert!(table.contains("  nginx  :8080 외부  (brew 서비스(system) root)"));
         assert!(table.contains("      프로젝트: ~/work/api"));

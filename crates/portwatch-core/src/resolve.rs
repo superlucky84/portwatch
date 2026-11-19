@@ -377,17 +377,23 @@ pub fn build_snapshot(facts: &Facts) -> Snapshot {
         .into_iter()
         .map(|group| make_entry(&index, facts, group))
         .collect();
+    sort_entries(&mut entries);
+    Snapshot {
+        taken_at_ms: facts.taken_at_ms,
+        collect_ms: 0,
+        entries,
+        warnings: facts.warnings.clone(),
+    }
+}
+
+/// 분류 순서(개발 서버, 서비스, 개발 도구, 앱, 시스템), 같은 분류는 가장 작은 포트 순.
+pub fn sort_entries(entries: &mut [Entry]) {
     entries.sort_by_key(|entry| {
         (
             category_order(entry.category),
             entry.listeners.iter().map(|l| l.port).min().unwrap_or(0),
         )
     });
-    Snapshot {
-        taken_at_ms: facts.taken_at_ms,
-        entries,
-        warnings: facts.warnings.clone(),
-    }
 }
 
 fn category_order(category: Category) -> u8 {
@@ -449,6 +455,7 @@ fn make_entry(index: &Index, facts: &Facts, group: Group) -> Entry {
         project.is_some(),
     );
     let title = title(index, &group, &manager, category, project.as_ref());
+    let key = entry_key(index, &group, &manager, category, project.as_ref());
     let protection = protection(facts, &group, &manager, category, top);
 
     // launchd(PID 1) 아래는 모든 프로세스라서 소켓 항목은 PID 1만 둔다.
@@ -472,6 +479,7 @@ fn make_entry(index: &Index, facts: &Facts, group: Group) -> Entry {
             group.top_pid,
             top.map(|row| row.started_at.as_str()).unwrap_or("")
         ),
+        key,
         title,
         category,
         manager,
@@ -480,7 +488,42 @@ fn make_entry(index: &Index, facts: &Facts, group: Group) -> Entry {
         project,
         domains: Vec::new(),
         protection,
+        hidden: false,
+        pinned: false,
     }
+}
+
+/// 다시 실행해도 같은 항목 기준(docs/DESIGN.md "항목 기준(key)").
+/// 개발 도구는 제목처럼 실행 파일 이름으로 기억한다. 같은 프로젝트의 개발 서버와 key가 겹치지 않게 하기 위해서다.
+fn entry_key(
+    index: &Index,
+    group: &Group,
+    manager: &Manager,
+    category: Category,
+    project: Option<&Project>,
+) -> String {
+    if group.kind == Kind::LaunchdSocket {
+        return "launchd-socket".to_owned();
+    }
+    if let Some(label) = &manager.label {
+        return format!("launchd:{label}");
+    }
+    if group.app_top {
+        if let Some(name) = &manager.app_name {
+            return format!("app:{name}");
+        }
+    }
+    if let (Some(project), false) = (project, category == Category::DevTool) {
+        return format!("project:{}", project.path);
+    }
+    let exe = group
+        .listeners
+        .first()
+        .and_then(|l| index.processes.get(&l.pid))
+        .or_else(|| index.processes.get(&group.top_pid))
+        .map(|row| exe_name(row).to_owned())
+        .unwrap_or_else(|| format!("pid-{}", group.top_pid));
+    format!("exe:{exe}")
 }
 
 fn info(row: &ProcessRow) -> ProcessInfo {

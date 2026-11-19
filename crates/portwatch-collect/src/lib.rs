@@ -256,14 +256,23 @@ pub fn collect_facts(runner: &dyn Runner, files: &dyn Files, env: &Environment) 
     facts
 }
 
-/// 바꿔 끼운 실행기·파일로 스냅샷을 만든다.
+/// 바꿔 끼운 실행기·파일로 스냅샷을 만든다. 걸린 시간을 `collect_ms`에 담는다.
 pub fn collect_with(runner: &dyn Runner, files: &dyn Files, env: &Environment) -> Snapshot {
-    build_snapshot(&collect_facts(runner, files, env))
+    let started = std::time::Instant::now();
+    let mut snapshot = build_snapshot(&collect_facts(runner, files, env));
+    snapshot.collect_ms = started.elapsed().as_millis() as u64;
+    snapshot
 }
 
-/// 현재 상태의 스냅샷을 만든다. macOS가 아니면 경고만 담는다.
+/// 기본 보안 프로그램 목록으로 현재 상태의 스냅샷을 만든다.
 pub fn collect_snapshot() -> Snapshot {
-    let env = Environment::current();
+    collect_snapshot_using(Environment::default_security_names())
+}
+
+/// 주어진 보안 프로그램 목록으로 현재 상태의 스냅샷을 만든다. macOS가 아니면 경고만 담는다.
+pub fn collect_snapshot_using(security_names: Vec<String>) -> Snapshot {
+    let mut env = Environment::current();
+    env.security_names = security_names;
     if !cfg!(target_os = "macos") {
         let mut snapshot = Snapshot::empty(env.now_ms);
         snapshot

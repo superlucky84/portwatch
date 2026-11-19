@@ -142,6 +142,7 @@ fn f01_root_brew_nginx_is_one_service_entry() {
     assert_eq!(nginx.project, None);
     assert_eq!(nginx.protection, None);
     assert_eq!(nginx.id, "launchd:1100:Wed Nov 18 09:00:00 2026");
+    assert_eq!(nginx.key, "launchd:sh.brew.nginx");
 }
 
 #[test]
@@ -231,6 +232,13 @@ fn f04_noise_is_folded_and_protected() {
         "도구는 프로젝트 이름이 아니라 도구 이름"
     );
     assert_eq!(tool.project.as_ref().unwrap().name, "api-server");
+    assert_eq!(
+        tool.key, "exe:assistant-cli",
+        "같은 프로젝트의 개발 서버와 key가 겹치지 않는다"
+    );
+    assert_eq!(by_port(&snapshot, 3000).key, "project:/Users/dev/work/api");
+    assert_eq!(by_port(&snapshot, 22).key, "launchd-socket");
+    assert_eq!(by_port(&snapshot, 57621).key, "app:Player");
 
     let player = by_port(&snapshot, 57621);
     assert_eq!(player.manager.kind, ManagerKind::App);

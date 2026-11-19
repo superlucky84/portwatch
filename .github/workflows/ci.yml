@@ -31,6 +31,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run check
       - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
 
   mac:
     # macOS 실행 시간은 Linux보다 훨씬 비싸서 수동 실행에서만 돌린다(DC-10).

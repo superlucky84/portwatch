@@ -11,11 +11,51 @@
     <header class="bar">
       <h1>portwatch</h1>
       <span id="updated" class="muted" aria-live="polite"></span>
+      <span class="spacer"></span>
+      <button id="refresh" type="button">새로 고침</button>
+      <button id="open-settings" type="button" aria-controls="settings">설정</button>
     </header>
-    <main id="list" class="list"></main>
+
+    <main id="list" class="list" aria-label="포트를 연 서버 목록"></main>
+
+    <section id="settings" class="settings" aria-label="설정" hidden>
+      <div class="settings-head">
+        <button id="close-settings" type="button">← 목록</button>
+        <h2>설정</h2>
+      </div>
+      <label class="field">
+        <input id="launch-at-login" type="checkbox" />
+        로그인 시 자동 실행
+      </label>
+      <label class="field">
+        창을 연 동안 갱신
+        <select id="refresh-open"></select>
+      </label>
+      <label class="field">
+        창을 닫은 동안 갱신
+        <select id="refresh-closed"></select>
+      </label>
+      <fieldset>
+        <legend>보안 프로그램 목록</legend>
+        <p class="muted">
+          이 이름이 들어간 프로그램은 시스템·보안으로 접고 멈추지 않습니다. 한 줄에 하나씩 적습니다.
+        </p>
+        <textarea id="security-names" rows="6" spellcheck="false" aria-label="보안 프로그램 이름"></textarea>
+        <div class="buttons">
+          <button id="save-security" type="button">저장</button>
+          <button id="reset-security" type="button">기본값으로</button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>숨긴 항목과 고정한 항목</legend>
+        <ul id="kept-keys" class="kept"></ul>
+      </fieldset>
+    </section>
+
     <ul id="warnings" class="warnings" hidden></ul>
     <footer class="bar">
-      <button id="refresh" type="button">새로 고침</button>
+      <span id="status" class="muted" role="status"></span>
+      <span class="spacer"></span>
       <button id="quit" type="button">종료</button>
     </footer>
   </body>

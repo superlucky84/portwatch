@@ -13,7 +13,7 @@
         "label": "main",
         "title": "portwatch",
         "width": 380,
-        "height": 480,
+        "height": 520,
         "visible": false,
         "resizable": false,
         "decorations": false,

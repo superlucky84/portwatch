@@ -35,7 +35,7 @@ Phase 0 created this layout. Do not describe commands as available before they e
 - ui/ renders snapshots only. Use JavaScript ES modules with two-space indentation and semicolons.
 - Run npm run check (cargo fmt, clippy with warnings denied, document links and IDs) and npm test for
   every change. Run npm run check:app for src-tauri changes; on Linux it needs the WebKitGTK development packages.
-  npm run test:ui arrives in Phase 2.
+  Run npm run test:ui (Playwright with a fake window.__TAURI__) for ui/ changes.
 - macOS CI builds run only by manual dispatch because macOS minutes cost about ten times Linux minutes.
 - Behavior that only macOS shows must be verified on the user's Mac or macOS CI; record which one.
 

@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 pub struct Snapshot {
     /// 수집 시각(Unix epoch 기준 밀리초).
     pub taken_at_ms: u64,
+    /// 수집에 걸린 시간(밀리초).
+    #[serde(default)]
+    pub collect_ms: u64,
     pub entries: Vec<Entry>,
     /// 실패한 명령이나 읽지 못한 정보. 화면에 그대로 보여준다.
     pub warnings: Vec<String>,
@@ -20,6 +23,7 @@ impl Snapshot {
     pub fn empty(taken_at_ms: u64) -> Self {
         Self {
             taken_at_ms,
+            collect_ms: 0,
             entries: Vec::new(),
             warnings: Vec::new(),
         }
@@ -32,6 +36,8 @@ impl Snapshot {
 pub struct Entry {
     /// 관리 주체, 최상위 프로세스 PID, 시작 시각으로 만든 값.
     pub id: String,
+    /// 다시 실행해도 같은 항목 기준. 숨기기·고정에 쓴다.
+    pub key: String,
     pub title: String,
     pub category: Category,
     pub manager: Manager,
@@ -42,6 +48,12 @@ pub struct Entry {
     pub domains: Vec<Domain>,
     /// 멈추기를 막는 경우 그 이유.
     pub protection: Option<Protection>,
+    /// 사용자가 숨긴 항목.
+    #[serde(default)]
+    pub hidden: bool,
+    /// 사용자가 "개발 서버로 고정"한 항목.
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,7 +165,7 @@ mod tests {
         let value = serde_json::to_value(Snapshot::empty(1_700_000_000_000)).unwrap();
         assert_eq!(
             value,
-            json!({ "takenAtMs": 1_700_000_000_000u64, "entries": [], "warnings": [] })
+            json!({ "takenAtMs": 1_700_000_000_000u64, "collectMs": 0, "entries": [], "warnings": [] })
         );
     }
 
@@ -161,6 +173,7 @@ mod tests {
     fn entry_serializes_kinds_in_kebab_case() {
         let entry = Entry {
             id: "launchd-brew:100:Wed Nov 18 09:00:00 2026".into(),
+            key: "launchd:sh.brew.nginx".into(),
             title: "nginx".into(),
             category: Category::Service,
             manager: Manager {
@@ -187,6 +200,8 @@ mod tests {
                 tls: true,
             }],
             protection: None,
+            hidden: false,
+            pinned: true,
         };
 
         let value = serde_json::to_value(&entry).unwrap();
@@ -194,6 +209,8 @@ mod tests {
         assert_eq!(value["manager"]["kind"], "launchd-brew");
         assert_eq!(value["manager"]["runsAsRoot"], true);
         assert_eq!(value["domains"][0]["via"], "nginx");
+        assert_eq!(value["key"], "launchd:sh.brew.nginx");
+        assert_eq!(value["pinned"], true);
 
         let back: Entry = serde_json::from_value(value).unwrap();
         assert_eq!(back, entry);

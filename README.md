@@ -2,7 +2,7 @@
 
 로컬 개발 서버를 한곳에서 보고 멈추는 macOS 메뉴바 앱입니다.
 
-> 개발 초기 단계입니다. 탐지 기능은 `portwatch-probe`로 확인할 수 있고, 메뉴바 창의 목록 화면은 아직 없습니다.
+> 개발 초기 단계입니다. 메뉴바 창에서 서버 목록을 보고 숨기거나 고정할 수 있습니다. 멈추기는 아직 없습니다.
 
 ## 무엇을 하나요
 
@@ -46,6 +46,12 @@ npm run check
 npm test
 ```
 
+메뉴바 창 화면은 가짜 Tauri 객체를 넣어 Playwright로 테스트합니다(처음 한 번은 `npx playwright install chromium`).
+
+```bash
+npm run test:ui
+```
+
 macOS에서 앱을 빌드하면 `target/release/bundle/macos/portwatch.app`이 생깁니다.
 
 ```bash
@@ -64,7 +70,10 @@ Apple 서명이 없어서 첫 실행을 macOS가 막습니다. **시스템 설�
 xattr -dr com.apple.quarantine /Applications/portwatch.app
 ```
 
-실행하면 Dock 아이콘 없이 메뉴바에 고리 모양 아이콘이 생깁니다. 왼쪽 클릭은 목록 창, 오른쪽 클릭은 종료 메뉴입니다.
+실행하면 Dock 아이콘 없이 메뉴바에 고리 모양 아이콘이 생기고, 옆에 개발 서버·서비스 수가 표시됩니다.
+왼쪽 클릭은 목록 창, 오른쪽 클릭은 종료 메뉴입니다. 목록 창에서 행을 누르면 상세와 열기·URL 복사·숨기기·고정 버튼이 나오고,
+설정에서 갱신 주기·로그인 시 자동 실행·보안 프로그램 목록을 바꿉니다. 설정은
+`~/Library/Application Support/io.github.superlucky84.portwatch/settings.json`에 저장됩니다.
 
 ### 탐지 결과 확인하기 (`portwatch-probe`)
 

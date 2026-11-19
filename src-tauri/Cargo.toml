@@ -13,3 +13,5 @@ portwatch-core = { path = "../crates/portwatch-core" }
 portwatch-collect = { path = "../crates/portwatch-collect" }
 tauri = { version = "=2.12.5", features = ["tray-icon", "image-png"] }
 tauri-plugin-positioner = { version = "=2.4.0", features = ["tray-icon"] }
+tauri-plugin-autostart = "=2.7.0"
+serde = { workspace = true }
