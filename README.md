@@ -2,7 +2,8 @@
 
 로컬 개발 서버를 한곳에서 보고 멈추는 macOS 메뉴바 앱입니다.
 
-> 개발 초기 단계입니다. 메뉴바 창에서 서버 목록을 보고 숨기거나 고정할 수 있습니다. 멈추기는 아직 없습니다.
+> 개발 중입니다. 메뉴바 창에서 서버 목록을 보고 숨기기·고정·멈추기를 할 수 있고, nginx 경로·hosts 이름·인증서를 보여줍니다.
+> 첫 배포 전 사용자 Mac 확인이 남아 있습니다.
 
 ## 무엇을 하나요
 
@@ -97,7 +98,52 @@ xattr -d com.apple.quarantine ./portwatch-probe
 
 `--json`은 앱이 받는 스냅샷 JSON을 그대로 출력합니다.
 
-## 계획한 설치 방법
+## 설치
 
-Homebrew cask로 설치할 예정입니다. 배포 위치는 아직 정하지 않았습니다([DC-18](./docs/DESIGN.md#결정-체크리스트)).
-Apple 서명 없이 배포하므로 첫 실행 때 macOS의 허용 절차가 필요합니다. 절차는 배포 단계에서 이곳에 적습니다.
+Apple Silicon Mac, macOS 15 이상에서 Homebrew로 설치합니다.
+
+```bash
+brew install --cask superlucky84/tap/portwatch
+```
+
+Apple 서명·공증이 없는 앱이라 처음 실행할 때 macOS가 막습니다. 한 번만 허용하면 됩니다.
+
+1. Spotlight나 `/Applications`에서 portwatch를 실행합니다. "확인되지 않은 개발자" 안내가 뜨면 **완료**를 누릅니다.
+2. **시스템 설정 → 개인정보 보호 및 보안**을 열고 아래쪽의 **그래도 열기**를 누릅니다.
+3. 다시 묻는 창에서 **열기**를 누르고 Mac 암호(또는 Touch ID)로 확인합니다.
+
+업데이트 뒤에는 같은 절차가 다시 필요할 수 있습니다. 회사 보안 프로그램이 서명 없는 앱을 막으면 담당 부서 정책을 따르세요.
+
+업데이트와 삭제:
+
+```bash
+brew upgrade --cask portwatch
+```
+
+```bash
+brew uninstall --cask portwatch
+```
+
+설정 파일까지 지우려면 `brew uninstall --zap --cask portwatch`를 씁니다.
+
+### 배포하기 (관리자용)
+
+코드는 비공개로 두고, 빌드한 앱 zip만 공개 저장소 `superlucky84/homebrew-tap`의 Releases와 `Casks/portwatch.rb`에 올립니다(DC-18).
+처음 한 번 준비할 것:
+
+- 공개 저장소 `superlucky84/homebrew-tap`을 만듭니다(기본 브랜치에 README 하나면 충분합니다).
+- 그 저장소 하나에만 **Contents: Read and write** 권한을 준 fine-grained 토큰을 만들어, portwatch 저장소의
+  Actions secret `TAP_TOKEN`으로 넣습니다.
+
+새 버전을 낼 때는 `package.json`·`Cargo.toml`(workspace)·`src-tauri/tauri.conf.json`의 버전을 같이 올려 커밋하고 태그를 푸시합니다.
+
+```bash
+git tag v0.1.0
+```
+
+```bash
+git push origin v0.1.0
+```
+
+`Release` workflow가 macOS에서 빌드·ad-hoc 서명·zip을 만들고 tap 저장소에 `portwatch-v<버전>` 릴리스와 cask를 올립니다.
+Actions 탭에서 **Release → Run workflow**로 수동 실행하면 리허설로 빌드와 artifact까지만 합니다(`publish`를 켜면 올립니다).

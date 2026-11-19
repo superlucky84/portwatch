@@ -426,15 +426,26 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
 
 ## 배포
 
-- 앱 파일은 GitHub Releases에 올리고, 설치 정보는 `superlucky84/homebrew-tap` 저장소의 cask로 둔다.
-  설치 명령은 `brew install --cask superlucky84/tap/portwatch`다.
+- 코드 저장소(`superlucky84/portwatch`)는 비공개로 두고, 빌드한 앱 zip만 공개 저장소 `superlucky84/homebrew-tap`의
+  Releases에 올린다(DC-18). 같은 tap 저장소의 `Casks/portwatch.rb`가 그 zip을 가리킨다.
+  설치 명령은 `brew install --cask superlucky84/tap/portwatch`, 업데이트는 `brew upgrade --cask portwatch`다.
 - `/Applications`에 설치되므로 Spotlight 검색은 따로 만들지 않는다.
-- 저장소가 비공개라서 Homebrew가 Releases 파일을 인증 없이 받을 수 없다. 배포 위치는 DC-18에서 정한다.
+- 배포 workflow(`.github/workflows/release.yml`, Phase 5):
+  - `v<버전>` 태그를 푸시하면 실행한다. 수동 실행(리허설)은 빌드와 artifact까지만 하고, `publish`를 켜야 올린다.
+  - 태그 버전이 `package.json`·`Cargo.toml`·`src-tauri/tauri.conf.json`의 버전과 같은지 먼저 확인한다(`scripts/release.mjs check`).
+  - macOS 실행기에서 `npm run build:mac`으로 ad-hoc 서명한 앱을 만들고 `codesign --verify --strict`로 확인한 뒤
+    `ditto -c -k --keepParent`로 `portwatch-<버전>-arm64.zip`을 만들고 SHA-256을 잰다.
+  - tap 저장소에 `portwatch-v<버전>` 릴리스를 만들어 zip을 올리고, `packaging/homebrew/portwatch.rb.in` 틀에 버전·SHA-256을 넣어
+    `Casks/portwatch.rb`로 커밋한다(`scripts/release.mjs cask`).
+  - tap 저장소에 쓰는 권한은 portwatch 저장소의 secret `TAP_TOKEN`(tap 저장소 하나에만 Contents 읽기·쓰기를 준 fine-grained 토큰)으로만 쓴다.
+    포트워치 저장소의 기본 토큰은 읽기 권한만 둔다.
+- cask: `depends_on macos: :sequoia`(macOS 15 이상, DC-03), `depends_on arch: :arm64`(DC-19), 업데이트·삭제 전에 앱을 끝내도록
+  `uninstall quit:`에 번들 ID를 쓰고, `zap`으로 설정 폴더를 지운다. `caveats`에 Gatekeeper 허용 절차를 짧게 안내한다.
 - Apple 서명·공증 없이 시작한다(DC-02). 대신 ad-hoc 서명을 한다. 서명이 전혀 없는 Apple Silicon 앱은
   내려받은 뒤 "손상된 앱"으로 표시될 수 있기 때문이다(Phase 5에서 확인).
 - 내려받은 앱에는 macOS의 격리 표시가 붙어 첫 실행을 Gatekeeper가 막는다. macOS 15부터는 설정의
   "개인정보 보호 및 보안 > 그래도 열기"로 허용하며, 새 버전마다 다시 허용해야 할 수 있다.
-  처리 방식(허용 절차 안내 또는 cask 설치 단계에서 격리 표시 제거)은 DC-21에서 정한다.
+  README와 cask `caveats`로 이 허용 절차를 안내하고, cask에서 격리 표시를 지우지 않는다(DC-21).
 - Mac에서 직접 빌드해 설치한 앱에는 격리 표시가 붙지 않아 이 절차가 필요 없다.
 - 회사 보안 에이전트가 서명 없는 앱을 막을 수 있다. M-14에서 확인한다.
 
@@ -508,18 +519,16 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
   `system` 도메인에서 `launchctl bootout`한 뒤 `/Library/LaunchDaemons`의 plist를 지운다. `launchctl bootout`만 쓰면 plist가 남아
   재부팅 때 다시 뜬다. `HOME=/var/root`는 root brew가 사용자 홈의 캐시에 root 소유 파일을 만들지 않게 하려는 것이다.
   남은 확인: osascript 관리자 권한에서 실제로 멈추는지, 취소 처리. 사용자 Mac M-08로 닫는다.
-- [ ] DC-18: 배포 위치. TBD — 사용자 결정 필요. 비공개 저장소의 Releases는 Homebrew가 인증 없이 받을 수 없다.
-  - (a) portwatch 저장소를 공개로 바꾼다. 가장 단순하다.
-  - (b) 코드는 비공개로 두고 빌드한 앱만 공개 저장소(예: `superlucky84/homebrew-tap`의 Releases)에 올린다.
-  - (c) brew 없이 Mac에서 직접 빌드해 `/Applications`에 설치한다. Gatekeeper 절차가 필요 없지만 RQ-08과 다르다.
-  Phase 5 전에 정한다. 검증: M-13.
+- [x] DC-18: 코드는 비공개로 두고 빌드한 앱 zip만 공개 저장소 `superlucky84/homebrew-tap`의 Releases에 올린다("배포" 절).
+  2026-11-19 사용자 결정(제안한 (b)안). 비교한 대안: (a) portwatch 저장소 공개(가장 단순하지만 코드가 공개됨),
+  (c) brew 없이 직접 빌드해 설치(RQ-08과 다름). tap 저장소 생성과 `TAP_TOKEN` secret 등록은 사용자가 한다. 검증: M-13.
 - [x] DC-19: 대상 CPU는 Apple Silicon(`aarch64-apple-darwin`)만이다. 2026-11-18 사용자 Mac의 `uname -m`이 `arm64`였다.
   Intel Mac 사용자에게 배포하기로 하면 universal 빌드를 추가한다. Intel brew 경로(`/usr/local`) 판별은 Phase 6에서 합성 자료로만 확인한다.
 - [x] DC-20: 화면은 프레임워크 없이 ES 모듈로 만든다(docatlas 화면과 같은 방식). 2026-11-19 Phase 2 시작 때 정했다.
   근거: 화면이 작고(목록·상세·설정) 빌드 단계 없이 `ui/`를 그대로 번들에 넣을 수 있다. 화면 테스트는 `window.__TAURI__`를
   가짜로 바꾸고 Playwright(`@playwright/test` 1.63.0)로 이 개발 환경과 Linux CI에서 돌린다. 검증: `npm run test:ui`.
-- [ ] DC-21: Gatekeeper 처리. 허용 절차를 README로 안내할지, cask 설치 단계에서 격리 표시를 지울지 고른다.
-  후자는 편하지만 Gatekeeper 확인을 건너뛰므로 회사 보안 정책에 맞는지 사용자가 판단해야 한다. Phase 5. 검증: M-14.
+- [x] DC-21: Gatekeeper 허용 절차를 README와 cask `caveats`로 안내한다. cask에서 격리 표시를 지우지 않는다.
+  2026-11-19 사용자 결정(제안안). 근거: 격리 표시를 지우면 Gatekeeper 확인을 건너뛰어 회사 보안 정책과 부딪힐 수 있다. 검증: M-14.
 - [x] DC-22: pm2 항목은 멈추지 않는다. 목록에는 보이고, 보호 이유로 터미널의 `pm2 stop`을 안내한다.
   2026-11-19 사용자 결정("pm2는 안 써서 A로"). 근거: 사용자가 pm2를 쓰지 않고 사용자 Mac에도 없어 확인할 수 없다.
   `pm2 stop`에는 pm2 경로·node·앱 이름(`pm2 jlist`)이 필요하고, pm2 자식을 신호로 멈추면 pm2가 다시 띄운다.

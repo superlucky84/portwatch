@@ -13,6 +13,7 @@
 - 완료(2026-11-19): Phase 2 메뉴바 목록 화면. 사용자 Mac에서 목록·접기·숨기기·고정·자동 갱신·아이콘 숫자·열기·복사·설정을 확인했다.
 - 구현 완료(2026-11-19): Phase 3 멈추기. 코드·자동 테스트는 끝났고 사용자 Mac 수동 검증(M-06~M-11)은 Phase 7로 미뤘다(사용자 결정).
 - 구현 완료(2026-11-19): Phase 4 도메인·프록시·인증서. 사용자 Mac 수동 검증(M-12)은 Phase 7에서 한다.
+- 구현 완료(2026-11-19): Phase 5 배포 workflow·cask·README. tap 저장소와 `TAP_TOKEN` 준비(사용자), 첫 배포 실행, M-13·M-14가 남았다.
 
 상세 계약을 바꾸면 요구사항·설계·단계·수동 기준을 같은 작업에서 갱신한다.
 미구현 명령이나 테스트를 이미 쓸 수 있는 것으로 안내하지 않는다.
@@ -23,7 +24,7 @@
 | --- | --- | --- |
 | `npm run check` | `cargo fmt --check`, 코어·수집기 `cargo clippy -D warnings`, 문서 링크·앵커·ID 검사 | 이 개발 환경, CI(Linux) |
 | `npm run check:app` | 셸 크레이트 `cargo clippy -D warnings` | macOS CI. Linux는 WebKitGTK 개발 패키지가 있어야 한다 |
-| `npm test` | `cargo test -p portwatch-core -p portwatch-collect` (합성 자료 테스트) | 이 개발 환경, CI(Linux) |
+| `npm test` | `cargo test -p portwatch-core -p portwatch-collect` (합성 자료 테스트)와 배포 스크립트 테스트(`node --test`, Phase 5) | 이 개발 환경, CI(Linux) |
 | `npm run test:ui` | 가짜 스냅샷으로 화면 테스트 (Playwright) | 이 개발 환경, CI(Linux) |
 | `npm run build:mac` | `tauri build --bundles app`으로 .app 생성 | macOS CI(수동 실행), 사용자 Mac |
 
@@ -414,25 +415,57 @@ Files:
 - `ui/style.css` (modified)
 - `ui/view.js` (modified)
 
-## Phase 5 — 배포: 대기
+## Phase 5 — 배포: 구현 완료(사용자 준비·확인 대기)
 
 Refs: RQ-08, RQ-09, DC-02, DC-18, DC-19, DC-21, M-13, M-14
 
 진입 기준: Phase 4 구현 완료. DC-18(배포 위치)을 사용자가 정했다.
 
-- [ ] 버전 태그를 푸시하면 macOS CI가 ad-hoc 서명한 앱을 빌드해 zip으로 올리는 workflow.
-- [ ] `superlucky84/homebrew-tap` 저장소와 cask(사용자가 저장소를 만든다).
-- [ ] Gatekeeper 처리(DC-21)와 README 설치 안내.
-- [ ] 업데이트 확인 방법(brew upgrade) 안내.
+결정(2026-11-19, 사용자): DC-18 닫음(코드는 비공개, 빌드한 zip만 공개 `superlucky84/homebrew-tap`의 Releases),
+DC-21 닫음(README와 cask 안내로 허용 절차, 격리 표시는 지우지 않음).
+
+- [x] 버전 태그를 푸시하면 macOS CI가 ad-hoc 서명한 앱을 빌드해 zip으로 올리는 workflow(`.github/workflows/release.yml`).
+  수동 실행은 리허설(빌드·artifact), `publish`를 켜면 올린다. 버전 확인·cask 만들기는 `scripts/release.mjs`(테스트 3개).
+- [x] cask 틀(`packaging/homebrew/portwatch.rb.in`): arm64·macOS 15 이상, `uninstall quit`, `zap`, Gatekeeper `caveats`.
+- [ ] `superlucky84/homebrew-tap` 저장소와 `TAP_TOKEN` secret(사용자가 만든다).
+- [x] Gatekeeper 처리(DC-21)와 README 설치 안내.
+- [x] 업데이트 방법(`brew upgrade --cask portwatch`) README 안내.
+- [ ] 첫 배포: 태그 푸시로 workflow를 실행하고 산출물의 서명 상태를 기록한다.
+- [ ] 사용자 Mac: M-13, M-14. 사용자 결정(2026-11-19)으로 Phase 7에서 확인한다.
 
 기준 검증: workflow를 수동 실행으로 리허설하고 산출물의 서명 상태(`codesign -dv`)를 기록한다.
 종료 기준: 사용자 Mac에서 `brew install --cask`로 설치·실행·업데이트가 된다(M-13, M-14).
+
+검증 기록(2026-11-19, 사용자 Mac의 로컬 세션):
+
+- `npm run check`·`npm test`(cargo 85개와 배포 스크립트 3개) 통과.
+- workflow의 단계를 이 Mac에서 같은 명령으로 리허설했다(GitHub 실행은 아직 안 함):
+  `scripts/release.mjs check v0.1.0` 통과, `codesign --verify --deep --strict` 통과,
+  `codesign -dv`는 `Identifier=io.github.superlucky84.portwatch`, `Format=app bundle with Mach-O thin (arm64)`, `Signature=adhoc`,
+  `TeamIdentifier=not set`. `ditto`로 만든 zip은 3.9 MB이고, 풀어도 서명 확인이 통과한다.
+  `spctl --assess`는 `rejected`(공증 없음, 예상대로 DC-21 허용 절차가 필요하다).
+- 만든 cask를 tap 모양 폴더(`Casks/`)에 두고 `brew style`(Homebrew 7.0.14)을 돌렸다. `depends_on macos: ">= :sequoia"`를
+  Homebrew가 권하는 `:sequoia`로 고친 뒤 위반 없음.
+- 아직 확인하지 않은 것: GitHub에서의 workflow 실행(tap 저장소와 `TAP_TOKEN`이 있어야 올리기까지 된다), brew 설치·업데이트(M-13),
+  Gatekeeper 허용과 회사 보안 프로그램(M-14).
+
+Files:
+- `.github/workflows/release.yml` (added)
+- `README.md` (modified)
+- `docs/DESIGN.md` (modified)
+- `docs/IMPLEMENT.md` (modified)
+- `docs/MANUAL_TEST_CHECKLIST.md` (modified)
+- `docs/REQUIREMENTS.md` (modified)
+- `package.json` (modified)
+- `packaging/homebrew/portwatch.rb.in` (added)
+- `scripts/release.mjs` (added)
+- `scripts/release.test.mjs` (added)
 
 ## Phase 6 — Test Hardening: 대기
 
 Refs: RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, DC-12, DC-16
 
-진입 기준: Phase 5 완료.
+진입 기준: Phase 5 구현 완료(tap 준비와 첫 배포는 사용자 준비를 기다린다).
 
 - [ ] macOS CI에서 실제 서비스를 띄워 probe로 판별하는 시나리오(예: brew nginx를 사용자·root 서비스로, 백그라운드 서버). 실행기는 sudo에 비밀번호가 없다.
 - [ ] IPv6 전용·특정 주소에만 연 포트, 같은 포트를 여러 프로세스가 연 경우.
@@ -462,16 +495,16 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
 
 이 프로젝트의 현재 인계는 이 블록 하나다. 이전 내용은 git 이력에 남는다.
 
-- 현재 작업(2026-11-19): Phase 4 도메인·프록시·인증서 구현과 자동 검증을 마쳤다. 다음은 Phase 5 배포인데 DC-18이 정해져야 시작한다.
+- 현재 작업(2026-11-19): Phase 5 배포 workflow·cask·README를 만들고 이 Mac에서 리허설했다. 다음은 Phase 6 Test Hardening.
   작업 위치는 사용자 Mac 로컬 세션이다(Rust 1.100.0을 mise로 설치).
-- 이번에 정한 것: DC-15(nginx 설정 파일 직접 읽기, 사용자 Mac 확인 근거). 앞서 DC-13·DC-14·DC-22와
-  "사용자 Mac 수동 확인은 Phase 7에서 몰아서"(모두 사용자 결정, 2026-11-19).
-- 다음: DC-18(비공개 저장소의 배포 위치)과 DC-21(Gatekeeper 처리)을 사용자에게 받아 Phase 5를 시작한다.
-  기다리는 동안 할 수 있는 일은 Phase 6 항목 중 Phase 5에 기대지 않는 것(합성 자료 테스트)이다.
-- 미룬 확인(Phase 7): M-06~M-11(Phase 3, DC-17은 M-08로 닫는다), M-12(Phase 4). 앱은 `npm run build:mac`으로 만든
-  `target/release/bundle/macos/portwatch.app`.
+- 이번에 정한 것(2026-11-19, 사용자): DC-18(빌드만 공개 tap 저장소에), DC-21(README로 허용 절차 안내).
+  앞서 DC-13·DC-14·DC-15·DC-22와 "사용자 Mac 수동 확인은 Phase 7에서 몰아서".
+- 사용자 준비: 공개 저장소 `superlucky84/homebrew-tap` 만들기, 그 저장소에만 Contents 읽기·쓰기를 준 fine-grained 토큰을
+  portwatch 저장소 secret `TAP_TOKEN`으로 넣기(README "배포하기"). 그 뒤 `v0.1.0` 태그 푸시로 첫 배포를 한다.
+- 미룬 확인(Phase 7): M-06~M-11(DC-17은 M-08로 닫는다), M-12, M-13, M-14.
 - 로컬 작업 원칙: 시험용으로 직접 띄운 프로세스만 멈춘다. 사용자의 실제 서버·brew 서비스·보안 프로그램은 묻기 전에 건드리지 않는다.
   관리자 비밀번호는 사용자가 macOS 창에 직접 넣는다. 실제 실행기 시험 전에는 시험 프로그램을 다시 빌드하고 대상 PID를 먼저 확인한다
   (2026-11-19 수정 전 빌드로 시험하다 에이전트 세션을 멈춘 일이 있었다). nginx 시험은 scratchpad 설정과 높은 포트로 따로 띄운다.
-- 차단: Phase 5는 DC-18 사용자 결정이 필요하다.
-- 커밋: Phase 4 커밋(이 문서를 담은 커밋, `git log`로 확인). 그 앞은 `ee53770`(Phase 3).
+  원격 푸시·workflow 실행·저장소 생성은 사용자에게 묻고 한다.
+- 차단: 없음(첫 배포는 사용자 준비를 기다린다).
+- 커밋: Phase 5 커밋(이 문서를 담은 커밋, `git log`로 확인). 그 앞은 `bfff1e5`(Phase 4). 로컬 `main`은 원격보다 앞서 있다(푸시 전).

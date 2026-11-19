@@ -10,7 +10,7 @@
   "scripts": {
     "check": "cargo fmt --all --check && cargo clippy -p portwatch-core -p portwatch-collect --all-targets -- -D warnings && node scripts/check-docs.mjs",
     "check:app": "cargo clippy -p portwatch --all-targets -- -D warnings",
-    "test": "cargo test -p portwatch-core -p portwatch-collect",
+    "test": "cargo test -p portwatch-core -p portwatch-collect && node --test 'scripts/*.test.mjs'",
     "build:mac": "tauri build --bundles app",
     "icons": "node scripts/make-icons.mjs",
     "tauri": "tauri",

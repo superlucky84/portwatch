@@ -1,0 +1,110 @@
+name: Release
+
+# 배포(docs/DESIGN.md "배포", DC-18·DC-21).
+# v<버전> 태그를 푸시하면 앱을 빌드해 공개 tap 저장소의 Releases와 cask에 올린다.
+# 수동 실행은 리허설이다. publish를 켜지 않으면 빌드와 artifact까지만 한다.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: tap 저장소에 릴리스와 cask를 올린다(태그 버전과 같아야 한다)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  TAP_REPO: superlucky84/homebrew-tap
+
+jobs:
+  release:
+    name: macOS / 빌드, 묶기, 올리기
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: 버전 확인
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            node scripts/release.mjs check "$GITHUB_REF_NAME"
+          else
+            node scripts/release.mjs check "v$version"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - run: rustup component add rustfmt clippy
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check
+      - run: npm test
+      - run: npm run check:app
+      - run: npm run build:mac
+      - name: 서명과 번들 확인
+        run: |
+          app=target/release/bundle/macos/portwatch.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv --verbose=2 "$app" 2>&1 | grep -E 'Identifier|Signature|Format|TeamIdentifier'
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist"
+          lipo -archs "$app/Contents/MacOS/portwatch"
+      - name: zip과 SHA-256
+        id: zip
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          zip="portwatch-$VERSION-arm64.zip"
+          ditto -c -k --keepParent target/release/bundle/macos/portwatch.app "$zip"
+          sha256=$(shasum -a 256 "$zip" | cut -d' ' -f1)
+          node scripts/release.mjs cask "$VERSION" "$sha256" > portwatch.rb
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          echo "$sha256  $zip"
+          cat portwatch.rb
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.zip.outputs.zip }}
+          path: ${{ steps.zip.outputs.zip }}
+          # zip을 한 번 더 압축하지 않고 그대로 올린다.
+          archive: false
+          retention-days: 14
+      - name: tap 저장소에 릴리스 만들기
+        if: github.ref_type == 'tag' || inputs.publish
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          ZIP: ${{ steps.zip.outputs.zip }}
+        run: |
+          gh release create "portwatch-v$VERSION" "$ZIP" \
+            --repo "$TAP_REPO" \
+            --title "portwatch $VERSION" \
+            --notes "portwatch $VERSION (Apple Silicon, macOS 15 이상). 설치: brew install --cask superlucky84/tap/portwatch"
+      - name: tap 저장소의 cask 갱신
+        if: github.ref_type == 'tag' || inputs.publish
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh auth setup-git
+          git clone --depth 1 "https://github.com/$TAP_REPO.git" tap
+          mkdir -p tap/Casks
+          cp portwatch.rb tap/Casks/portwatch.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/portwatch.rb
+          git commit -m "portwatch $VERSION"
+          git push origin HEAD
