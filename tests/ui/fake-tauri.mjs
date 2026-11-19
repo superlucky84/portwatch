@@ -31,11 +31,33 @@ function entry(key, title, category, kind, ports, extra = {}) {
       },
     ],
     project: extra.project ?? null,
-    domains: [],
+    domains: extra.domains ?? [],
     protection: extra.protection ?? null,
     stopPlan: extra.stopPlan ?? null,
     hidden: extra.hidden ?? false,
     pinned: extra.pinned ?? false,
+  };
+}
+
+// nginx가 443에서 shop-web(5173)으로 넘기는 주소. 인증서는 열흘 뒤 만료라 경고가 붙는다.
+function shopDomain(via) {
+  return {
+    name: 'shop.example.test',
+    via,
+    scheme: 'https',
+    port: 443,
+    path: '/',
+    upstream: 5173,
+    inHosts: true,
+    tls: {
+      subject: 'shop.example.test',
+      sans: ['shop.example.test'],
+      issuer: 'mkcert development CA',
+      mkcert: true,
+      notAfterMs: Date.UTC(2026, 10, 29, 12),
+      warnings: ['인증서가 14일 안에 만료됩니다.'],
+      error: null,
+    },
   };
 }
 
@@ -51,6 +73,7 @@ export function snapshot(overrides = {}) {
       }),
       entry('project:/Users/dev/work/shop-web', 'shop-web', 'dev-server', 'terminal', [5173], {
         project: { name: 'shop-web', path: '/Users/dev/work/shop-web' },
+        domains: [shopDomain('proxied')],
         stopPlan: { method: { kind: 'signal', pid: 2100, group: true }, command: 'kill -TERM -2100', admin: false },
         processes: Array.from({ length: 10 }, (_, index) => ({
           pid: 2100 + index,
@@ -65,6 +88,29 @@ export function snapshot(overrides = {}) {
       }),
       entry('launchd:sh.brew.nginx', 'nginx', 'service', 'launchd-brew', [8080], {
         manager: { domain: 'system', label: 'sh.brew.nginx', formula: 'nginx', runsAsRoot: true },
+        domains: [
+          {
+            name: 'localhost',
+            via: 'nginx',
+            scheme: 'http',
+            port: 8080,
+            path: '/api',
+            upstream: 3000,
+            inHosts: true,
+            tls: null,
+          },
+          {
+            name: 'intranet.example.test',
+            via: 'nginx',
+            scheme: 'http',
+            port: 8080,
+            path: '/',
+            upstream: 3000,
+            inHosts: false,
+            tls: null,
+          },
+          shopDomain('nginx'),
+        ],
         stopPlan: {
           method: { kind: 'brew-services', brew: '/opt/homebrew/bin/brew', formula: 'nginx', domain: 'system' },
           command: 'brew services stop nginx',

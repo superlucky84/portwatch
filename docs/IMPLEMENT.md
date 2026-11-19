@@ -12,7 +12,7 @@
 - 완료(2026-11-19): Phase 1 탐지 코어. 사용자 Mac에서 root·사용자 brew 서비스, 터미널 서버, 잡음 분류를 probe로 확인했다.
 - 완료(2026-11-19): Phase 2 메뉴바 목록 화면. 사용자 Mac에서 목록·접기·숨기기·고정·자동 갱신·아이콘 숫자·열기·복사·설정을 확인했다.
 - 구현 완료(2026-11-19): Phase 3 멈추기. 코드·자동 테스트는 끝났고 사용자 Mac 수동 검증(M-06~M-11)은 Phase 7로 미뤘다(사용자 결정).
-- 진행 중(2026-11-19): Phase 4 도메인·프록시·인증서.
+- 구현 완료(2026-11-19): Phase 4 도메인·프록시·인증서. 사용자 Mac 수동 검증(M-12)은 Phase 7에서 한다.
 
 상세 계약을 바꾸면 요구사항·설계·단계·수동 기준을 같은 작업에서 갱신한다.
 미구현 명령이나 테스트를 이미 쓸 수 있는 것으로 안내하지 않는다.
@@ -343,26 +343,82 @@ Files:
 - `ui/style.css` (modified)
 - `ui/view.js` (modified)
 
-## Phase 4 — 도메인·프록시·인증서: 대기
+## Phase 4 — 도메인·프록시·인증서: 구현 완료(사용자 확인 대기)
 
 Refs: RQ-05, PR-05, DC-15, M-12
 
 진입 기준: Phase 3 구현 완료(수동 확인은 사용자 결정으로 Phase 7에서 한다).
 
-- [ ] hosts 파서: 루프백 도메인만, `localhost`·주석 제외.
-- [ ] nginx 설정 읽기(DC-15)와 파서: `include`, `server`, `listen`, `server_name`, `proxy_pass`, `upstream`.
-- [ ] 도메인 연결: nginx 항목과 upstream 항목에 붙이기, 직접 80/443을 연 서버.
-- [ ] TLS 확인: SNI로 인증서만 읽고 주체·SAN·발급자·만료일·경고 표시.
-- [ ] 화면: 행에 도메인 표시, 상세에 연결 경로와 인증서.
+결정(2026-11-19): DC-15 닫음(nginx 설정 파일을 직접 읽는다). 근거는 사용자 Mac의 brew nginx 설정·로그 권한 확인(설계 DC-15).
+
+- [x] hosts 파서(`hosts.rs`): 루프백(`127.0.0.0/8`·`::1`) 이름만, `localhost`·`broadcasthost`·주석 제외.
+- [x] nginx 설정 읽기(DC-15)와 파서(`nginx.rs`): 실행 중인 master의 `-c` 또는 brew 기본 경로, `include`(마지막 조각 `*` 패턴),
+  `http`·`server`·`listen`(포트·`ssl`)·`server_name`·`location`(정규식 제외, 안쪽 location 포함)·`proxy_pass`·`upstream`.
+  수집기 `read_nginx`가 파일 64개까지 읽는다.
+- [x] 주소 연결(`domains.rs`): nginx 항목(`via: nginx`), upstream 포트 항목(`via: proxied`), 80/443을 직접 연 항목(`via: direct`).
+  설정에만 있고 nginx가 열지 않은 포트는 붙이지 않는다. 스냅샷 `domains` 모양을 설계대로 바꿨다(`Cert` 추가).
+- [x] TLS 확인: 수집기 `tls.rs`(rustls, 루프백만, SNI, 검증 없이 읽기만, 연결·핸드셰이크 1초, 60초 캐시),
+  코어 `cert.rs`(x509-parser로 주체·SAN·발급자·mkcert·만료, 만료·14일·이름 불일치 경고).
+- [x] 화면: 행에 대표 이름과 "인증서" 경고 표시, 상세에 주소·경유·hosts 여부·인증서·경고와 주소별 열기·복사.
+  `open_url`은 마지막 스냅샷의 `inHosts` 주소 URL도 연다. probe 표에 "주소:" 줄.
+- [x] 직접 띄운 nginx(분리 실행)의 제목이 `nginx:`로 보이던 것을 실행 파일 이름 `nginx`로 고쳤다.
+- [ ] 사용자 Mac: M-12. 사용자 결정(2026-11-19)으로 Phase 7에서 확인한다.
 
 기준 검증: hosts·nginx 합성 자료 F-07 파서 테스트. 이 개발 환경에서 자체 서명 인증서로 띄운 TLS 서버를 읽는 테스트.
-종료 기준: 사용자 Mac에서 M-12 통과.
+종료 기준: 사용자 Mac에서 M-12 통과. 사용자 결정으로 자동 검증 통과로 구현을 마치고, M-12는 Phase 7에서 확인한다.
+
+검증 기록(2026-11-19, 사용자 Mac의 로컬 세션):
+
+- `npm run check` 통과, `npm test` 85개 통과(코어 50·합성 자료 시나리오 14·수집기 21, 이전 64개에서 21개 추가),
+  `npm run check:app` 통과, `npm run test:ui` 16개 통과(주소·인증서 2개 추가). 380×520 밝은·어두운 스크린샷으로 상세 배치를 봤다.
+- 실제 TLS 서버 테스트(`reads_the_certificate_of_a_loopback_tls_server`): rcgen 인증서로 127.0.0.1에 띄운 rustls 서버에서
+  같은 인증서를 받고 서버가 SNI 이름을 받는다. 루프백이 아닌 주소는 연결하지 않는다.
+- 사용자 Mac에서 에이전트가 직접 띄운 시험 nginx(scratchpad 설정, `-c`, 18080·18443, `include servers/*.conf`, 10일짜리 자체 서명 인증서)와
+  시험 upstream(18081)으로 probe를 실행했다: nginx 항목에 `http://localhost:18080/api → :18081`, `https://localhost:18443/ → :18081`과
+  인증서 발급자·"14일 안에 만료" 경고, upstream 항목에 같은 두 주소가 "nginx 경유"로 붙었다. 시험 뒤 두 프로세스를 끝냈다.
+  사용자의 brew nginx는 켜지 않았다(꺼져 있었다).
+- 발견(Phase 6으로): Xcode의 `/usr/bin/python3`로 띄운 서버는 실행 파일이 `Xcode.app/…/Python.app/Contents/MacOS/Python`이라
+  "Xcode" 앱 항목으로 분류된다.
+- 아직 확인하지 않은 것: 사용자 설정 그대로의 nginx와 hosts 이름·mkcert 인증서(M-12), 앱 화면에서의 주소 열기.
+
+Files:
+- `Cargo.lock` (modified)
+- `crates/portwatch-collect/Cargo.toml` (modified)
+- `crates/portwatch-collect/src/lib.rs` (modified)
+- `crates/portwatch-collect/src/report.rs` (modified)
+- `crates/portwatch-collect/src/system.rs` (modified)
+- `crates/portwatch-collect/src/tls.rs` (added)
+- `crates/portwatch-core/Cargo.toml` (modified)
+- `crates/portwatch-core/src/actions.rs` (modified)
+- `crates/portwatch-core/src/cert.rs` (added)
+- `crates/portwatch-core/src/domains.rs` (added)
+- `crates/portwatch-core/src/hosts.rs` (added)
+- `crates/portwatch-core/src/lib.rs` (modified)
+- `crates/portwatch-core/src/nginx.rs` (added)
+- `crates/portwatch-core/src/resolve.rs` (modified)
+- `crates/portwatch-core/src/snapshot.rs` (modified)
+- `crates/portwatch-core/tests/fixtures/mac-15/hosts.txt` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/netstat.txt` (modified)
+- `crates/portwatch-core/tests/fixtures/mac-15/nginx/mime.types` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/nginx/nginx.conf` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/nginx/servers/shop.conf` (added)
+- `crates/portwatch-core/tests/mac_fixtures.rs` (modified)
+- `docs/DESIGN.md` (modified)
+- `docs/IMPLEMENT.md` (modified)
+- `docs/MANUAL_TEST_CHECKLIST.md` (modified)
+- `docs/REQUIREMENTS.md` (modified)
+- `src-tauri/src/commands.rs` (modified)
+- `tests/ui/fake-tauri.mjs` (modified)
+- `tests/ui/popover.spec.mjs` (modified)
+- `ui/main.js` (modified)
+- `ui/style.css` (modified)
+- `ui/view.js` (modified)
 
 ## Phase 5 — 배포: 대기
 
 Refs: RQ-08, RQ-09, DC-02, DC-18, DC-19, DC-21, M-13, M-14
 
-진입 기준: Phase 4 완료. DC-18(배포 위치)을 사용자가 정했다.
+진입 기준: Phase 4 구현 완료. DC-18(배포 위치)을 사용자가 정했다.
 
 - [ ] 버전 태그를 푸시하면 macOS CI가 ad-hoc 서명한 앱을 빌드해 zip으로 올리는 workflow.
 - [ ] `superlucky84/homebrew-tap` 저장소와 cask(사용자가 저장소를 만든다).
@@ -384,6 +440,7 @@ Refs: RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, DC-12, DC-16
 - [ ] 긴 명령줄·공백·한글 경로·이상한 프로세스 이름.
 - [ ] 명령 없음(docker·brew 미설치), 권한 오류, 출력 형식이 예상과 다른 경우의 warnings.
 - [ ] Intel 경로(`/usr/local`)의 brew 서비스 판별.
+- [ ] 개발자 도구 번들 안의 실행 파일(예: Xcode의 `/usr/bin/python3` → `Xcode.app/…/Python.app`)로 띄운 서버를 앱이 아닌 개발 서버로 분류(Phase 4 발견).
 - [ ] 포트 수백 개 규모의 수집·판별 시간 측정과 회귀 기준.
 
 기준 검증: 위 항목의 자동 테스트 추가와 `npm run check`·`npm test`·`npm run test:ui` 통과.
@@ -405,14 +462,16 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
 
 이 프로젝트의 현재 인계는 이 블록 하나다. 이전 내용은 git 이력에 남는다.
 
-- 현재 작업(2026-11-19): Phase 4 도메인·프록시·인증서 시작. Phase 3 멈추기는 구현과 자동 검증을 마치고 커밋했다.
+- 현재 작업(2026-11-19): Phase 4 도메인·프록시·인증서 구현과 자동 검증을 마쳤다. 다음은 Phase 5 배포인데 DC-18이 정해져야 시작한다.
   작업 위치는 사용자 Mac 로컬 세션이다(Rust 1.100.0을 mise로 설치).
-- 이번에 정한 것: DC-13(brew 외 launchd 서비스는 멈추지 않음), DC-14(Docker Desktop 형식 확인), DC-22(pm2는 멈추지 않음),
-  사용자 Mac 수동 확인은 Phase 7에서 몰아서 한다(모두 사용자 결정, 2026-11-19).
-- 다음: Phase 4. DC-15(nginx 설정 읽기 방식)를 사용자 Mac에서 확인해 정하고 hosts·nginx 파서와 TLS 확인을 만든다.
-- 미룬 확인: M-06~M-11(Phase 3, 앱은 `npm run build:mac`으로 만든 `target/release/bundle/macos/portwatch.app`), DC-17은 M-08로 닫는다.
+- 이번에 정한 것: DC-15(nginx 설정 파일 직접 읽기, 사용자 Mac 확인 근거). 앞서 DC-13·DC-14·DC-22와
+  "사용자 Mac 수동 확인은 Phase 7에서 몰아서"(모두 사용자 결정, 2026-11-19).
+- 다음: DC-18(비공개 저장소의 배포 위치)과 DC-21(Gatekeeper 처리)을 사용자에게 받아 Phase 5를 시작한다.
+  기다리는 동안 할 수 있는 일은 Phase 6 항목 중 Phase 5에 기대지 않는 것(합성 자료 테스트)이다.
+- 미룬 확인(Phase 7): M-06~M-11(Phase 3, DC-17은 M-08로 닫는다), M-12(Phase 4). 앱은 `npm run build:mac`으로 만든
+  `target/release/bundle/macos/portwatch.app`.
 - 로컬 작업 원칙: 시험용으로 직접 띄운 프로세스만 멈춘다. 사용자의 실제 서버·brew 서비스·보안 프로그램은 묻기 전에 건드리지 않는다.
   관리자 비밀번호는 사용자가 macOS 창에 직접 넣는다. 실제 실행기 시험 전에는 시험 프로그램을 다시 빌드하고 대상 PID를 먼저 확인한다
-  (2026-11-19 수정 전 빌드로 시험하다 에이전트 세션을 멈춘 일이 있었다).
-- 차단: Phase 5 전에 DC-18(비공개 저장소의 배포 위치)을 사용자가 정해야 한다.
-- 커밋: Phase 3 커밋(이 문서를 담은 커밋, `git log`로 확인). 그 앞은 `cbb08a8`.
+  (2026-11-19 수정 전 빌드로 시험하다 에이전트 세션을 멈춘 일이 있었다). nginx 시험은 scratchpad 설정과 높은 포트로 따로 띄운다.
+- 차단: Phase 5는 DC-18 사용자 결정이 필요하다.
+- 커밋: Phase 4 커밋(이 문서를 담은 커밋, `git log`로 확인). 그 앞은 `ee53770`(Phase 3).

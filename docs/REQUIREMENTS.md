@@ -102,6 +102,10 @@
 부수 효과: `sudo brew services start`는 nginx 실행 파일과 링크 4개의 소유자를 `root:admin`으로 바꾼다.
 시험 뒤 `find /opt/homebrew -user root`로 확인하고 본인 소유로 되돌렸다. 수동 검증 준비 절에 같은 정리 절차를 둔다.
 
+2026-11-19 추가 관찰(Phase 4, 읽기만 함): 사용자의 brew nginx 설정은 사용자 소유로 읽을 수 있고, `server_name localhost` 하나에
+location 경로별로 루프백 포트에 넘기는 모양이다(도메인 이름 없이 경로로 나눠 쓴다). hosts에는 루프백 이름과 사내 주소가 섞여 있다.
+이 관찰로 `localhost` 경로도 주소로 보여주고 nginx 설정은 파일을 직접 읽기로 했다(DC-15).
+
 ## 비목표
 
 - Windows·Linux 지원(RQ-01). 핵심 로직의 Linux 테스트는 개발 편의일 뿐 지원 약속이 아니다.

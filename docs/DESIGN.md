@@ -32,7 +32,7 @@
 
 | 위치 | 그림의 역할 | 내용 |
 | --- | --- | --- |
-| `crates/portwatch-core/` | 코어 | Rust 라이브러리. 의존성은 직렬화 등 순수 계산용만 둔다. macOS 없이 `cargo test`로 검증한다. |
+| `crates/portwatch-core/` | 코어 | Rust 라이브러리. 의존성은 직렬화·인증서 해석(`x509-parser`) 등 순수 계산용만 둔다. macOS 없이 `cargo test`로 검증한다. |
 | `crates/portwatch-collect/` | 수집기·실행기 | 명령 실행, 신호 보내기, 관리자 권한 실행, TLS 확인. 진단용 실행 파일 `portwatch-probe`를 함께 둔다. |
 | `src-tauri/` | 메뉴바 셸 | 트레이 아이콘, 팝오버 창, 갱신 주기, 화면에 노출하는 고정 명령. |
 | `ui/` | 화면 | HTML/CSS/JS. 구현 방식은 DC-20. |
@@ -55,6 +55,9 @@ Phase 0에서 고정한 버전(2026-11-18, 게시 후 4주 안팎 지난 버전�
 | `tauri-plugin-positioner` | 2.4.0 |
 | `tauri-plugin-autostart` | 2.7.0 (Phase 2) |
 | `@playwright/test` | 1.63.0 (Phase 2, 화면 테스트) |
+| `x509-parser` | 0.18.1 (Phase 4, 코어의 인증서 해석) |
+| `rustls` | 0.23.46 (Phase 4, 수집기의 TLS 확인. 기본 기능을 끄고 `ring`·`std`·`tls12`만 켠다) |
+| `rcgen` | 0.14.10 (Phase 4, 테스트에서만 인증서를 만든다) |
 | 개발 환경 Rust | 1.97.0 (클라우드 세션), 1.100.0 (사용자 Mac, Phase 3부터) |
 - 화면에 노출하는 명령은 "화면과 갱신" 절의 목록으로 고정한다(멈추기는 Phase 3에서 추가).
   임의 명령을 실행하는 셸 플러그인은 넣지 않는다. 화면이 잘못되거나 변조돼도 정해진 동작 밖으로 나가지 않게 하기 위해서다.
@@ -86,12 +89,29 @@ Entry            포트를 연 서버 하나 (프로세스 트리의 최상위 �
   listeners[]    { port, address, family, pid }
   processes[]    { pid, ppid, pgid, uid, user, tty, startedAt, command }   최상위와 그 아래 프로세스 (Phase 1에서 pgid·uid·tty 추가)
   project        { name, path } 또는 없음
-  domains[]      { name, via, port, tls }   via: hosts | nginx | direct
+  domains[]      이 항목에 닿는 주소 (Phase 4에서 모양을 정했다, "도메인 연결" 절)
+    name         주소 이름 (예: shop.example.test, localhost)
+    via          nginx (이 항목이 nginx이고 upstream으로 넘긴다) | proxied (nginx를 거쳐 이 항목에 닿는다) | direct (이 항목이 80/443을 직접 연다)
+    scheme       http | https
+    port         브라우저가 쓰는 포트 (nginx의 listen 포트, direct는 이 항목의 포트)
+    path         nginx location 경로 (기본 /)
+    upstream     nginx가 넘기는 루프백 포트 (direct는 없음)
+    inHosts      hosts가 이 이름을 루프백으로 가리키는지 (localhost는 항상 true)
+    tls          Cert 또는 없음 (https일 때만)
   protection     멈추기를 막는 이유 (막지 않으면 없음)
   stopPlan       멈추기 계획 또는 없음(보호 항목, 멈추는 방법이 없는 항목). Phase 3에서 추가
     method       { kind: signal, pid, group } | { kind: brew-services, brew, formula, domain } | { kind: docker-stop, docker, socket, containerId }
     command      확인 창에 보여 줄 명령 (예: brew services stop nginx)
     admin        관리자 권한이 필요한지
+
+Cert             루프백 TLS 확인으로 읽은 인증서 (Phase 4)
+  subject        주체 CN
+  sans[]         SAN의 DNS 이름
+  issuer         발급자 O(없으면 CN)
+  mkcert         mkcert 개발 CA가 발급했는지
+  notAfterMs     만료 시각
+  warnings[]     만료됨 · 14일 안에 만료 · 주소 이름이 인증서에 없음 (문장)
+  error          읽지 못한 이유 (있으면 나머지는 비어 있다)
 
 Manager
   kind           launchd-brew | launchd-other | docker | pm2 | terminal | detached | app | launchd-socket | unknown
@@ -119,8 +139,9 @@ brew는 `/opt/homebrew/bin/brew`와 `/usr/local/bin/brew`를 차례로 찾는다
 | `/bin/launchctl print <도메인>/<라벨>` | plist 경로·실행 파일·인수·작업 폴더 | 확인된 사실. 서비스 항목에만 실행 |
 | `/usr/sbin/lsof -a -p <PID 목록> -d cwd -Fn` | 내 프로세스의 작업 폴더 | 자기 프로세스만 보인다는 사실 확인 |
 | `<Docker.app>/Contents/Resources/bin/docker --host unix://<홈>/.docker/run/docker.sock ps --no-trunc --format '{{json .}}'` | 컨테이너 ID·이름·포트 연결 | Docker Desktop 포트 전달 프로세스가 포트를 열었을 때만. 형식 확인(DC-14) |
-| `/etc/hosts` 읽기 | 루프백을 가리키는 도메인 | Phase 4 |
-| nginx 설정 읽기 | server_name·listen·proxy_pass | 방식은 DC-15 |
+| `/etc/hosts` 읽기 | 루프백을 가리키는 도메인 | Phase 4. 모든 사용자가 읽을 수 있다 |
+| nginx 설정 파일 읽기(`include` 포함) | server·listen·server_name·location·proxy_pass·upstream | Phase 4, DC-15. nginx master가 실행 중일 때만 |
+| 루프백 TLS 연결(rustls, SNI) | 인증서 | Phase 4. https 주소에만, 결과는 60초 동안 재사용 |
 
 `-ww`가 필요하다: BSD `ps`는 출력이 터미널이 아니면 폭을 79칸으로 잡아 명령줄을 자른다. 사용자가 터미널에서 본 결과가
 잘리지 않은 것은 표준 오류가 터미널이었기 때문이고, 앱에서 실행하면 터미널이 없다.
@@ -282,16 +303,34 @@ portwatch 자신, root·현재 사용자가 아닌 다른 사용자의 프로세
 
 ## 도메인 연결
 
-1. `/etc/hosts`에서 `127.0.0.0/8`·`::1`을 가리키는 도메인을 모은다. `localhost`와 주석은 뺀다.
-2. 프록시 설정을 읽는다. 처음에는 nginx만 지원한다(Caddy 등은 이후 범위).
-   server 블록의 `listen`·`server_name`·`proxy_pass`(upstream 블록 포함)를 읽어
-   "도메인 → nginx listener → upstream 포트"를 만든다. 읽기 방식은 DC-15.
-3. 도메인을 항목에 붙인다. nginx 항목에는 `via: nginx`로, upstream 포트의 항목에는 같은 도메인을 "nginx 경유"로 붙인다.
-   개발 서버가 직접 80/443을 열고 있으면 `via: direct`로 붙인다.
-4. TLS 포트이면 `127.0.0.1:<포트>`에 SNI로 도메인을 주고 인증서만 읽는다. 데이터는 보내지 않는다.
-   주체·SAN·발급자(mkcert 여부)·만료일을 보여주고, 만료·14일 안 만료·SAN 불일치를 경고한다.
+Phase 4 설계. 파싱과 연결은 코어(`hosts.rs`·`nginx.rs`·`domains.rs`), 파일 읽기와 TLS 연결은 수집기가 한다.
 
-설정 파일과 hosts 파일은 읽기만 한다.
+1. `/etc/hosts`에서 `127.0.0.0/8`·`::1`을 가리키는 이름을 모은다(소문자). `localhost`·`broadcasthost`와 주석은 뺀다.
+2. nginx 설정을 읽는다(DC-15). 처음에는 nginx만 지원한다(Caddy 등은 이후 범위).
+   - 실행 중인 nginx master(`nginx: master process <실행 파일> …`)가 있을 때만 읽는다. 설정 파일은 명령줄의 `-c <경로>`,
+     없으면 실행 파일의 brew 위치에 따라 `/opt/homebrew/etc/nginx/nginx.conf` 또는 `/usr/local/etc/nginx/nginx.conf`다.
+     둘 다 아니면 경고만 남긴다.
+   - `include`는 설정 파일 폴더 기준 상대 경로로 풀고, 마지막 경로 조각의 `*` 패턴만 펼친다(예: `servers/*`). 이름순으로 넣는다.
+     파일은 64개, 하나에 1 MB, 깊이 8까지 읽는다. 넘거나 읽지 못하면 경고를 남기고 읽은 것만 쓴다.
+   - `http` 안의 `server` 블록마다 `listen`(포트와 `ssl`), `server_name`, `location <경로>`(정규식 location은 건너뜀) 안의
+     `proxy_pass`를 읽는다. `listen`이 없으면 80이다. `proxy_pass`의 호스트가 루프백(`127.*`·`localhost`·`[::1]`)이면 그 포트,
+     `upstream` 이름이면 그 블록의 루프백 `server`들의 포트를 쓴다. 루프백이 아닌 대상은 버린다.
+   - `server_name`의 `_`·빈 이름·정규식(`~`)·와일드카드(`*`)는 버린다. 남은 이름이 없으면 `localhost`로 본다.
+     `localhost`는 남긴다(경로로 나눠 쓰는 설정이 흔하다). 정적 파일만 내주는 location은 주소로 만들지 않는다.
+3. 주소를 항목에 붙인다.
+   - nginx 항목(listener 실행 파일이 `nginx`이고 listen 포트를 연 항목): `via: nginx`, 주소마다 location 경로와 upstream 포트.
+   - upstream 포트를 연 항목: 같은 주소를 `via: proxied`로 붙인다.
+   - nginx가 아닌 항목이 80·443을 직접 열면 hosts의 루프백 이름을 `via: direct`로 붙인다(443은 https).
+   - 설정에만 있고 nginx 항목이 실제로 열지 않은 포트의 경로는 붙이지 않는다(설정을 고친 뒤 다시 읽기 전 등).
+   - 같은 값은 한 번만 둔다. 이름·포트·경로 순으로 정렬한다.
+   - nginx는 명령줄을 `nginx: master process <실행 파일> …`로 바꾸므로, 실행 파일 이름은 그 안의 경로(일꾼은 `nginx`)로 읽는다.
+4. https 주소는 수집기가 `127.0.0.1:<포트>`(listener가 `::1`에만 열렸으면 `[::1]`)에 SNI로 이름을 주고 TLS 핸드셰이크만 한 뒤
+   인증서를 읽는다. 인증서 검증은 하지 않고(읽기만 한다) 데이터는 보내지 않는다. 연결·핸드셰이크 제한 시간은 각 1초다.
+   (포트, 이름)별 결과를 60초 동안 재사용해 갱신 주기마다 연결하지 않는다.
+   코어가 DER 인증서를 읽어 주체·SAN·발급자(mkcert 여부)·만료일을 채우고, 만료·14일 안 만료·이름 불일치를 경고한다.
+   SAN의 `*.example.test`는 한 단계 하위 이름과 맞는다.
+
+설정 파일과 hosts 파일은 읽기만 한다. TLS 확인 말고는 네트워크에 연결하지 않는다.
 
 ## 화면과 갱신
 
@@ -360,7 +399,7 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
 | `set_hidden(key, hidden)`·`set_pinned(key, pinned)` | 설정을 바꾸고 마지막 스냅샷에 다시 적용해 보낸다 |
 | `update_settings(값)` | 갱신 주기·보안 프로그램 목록을 바꾼다. 범위 밖 값은 거부한다 |
 | `set_launch_at_login(enabled)` | 로그인 시 자동 실행을 켜고 끈다 |
-| `open_url(url)` | `http(s)://localhost` 또는 `127.0.0.1`에 포트만 붙은 주소만 기본 브라우저로 연다(`/usr/bin/open`) |
+| `open_url(url)` | `http(s)://localhost` 또는 `127.0.0.1`에 포트만 붙은 주소, 또는 마지막 스냅샷의 주소 중 `inHosts`인 것의 URL만 기본 브라우저로 연다(`/usr/bin/open`). hosts에 없는 이름은 바깥으로 나갈 수 있어 열지 않는다(Phase 4) |
 | `copy_text(text)` | 2,000자 이하 글자를 클립보드에 넣는다(`/usr/bin/pbcopy`) |
 | `stop_entry(id)` | 마지막 수집 결과의 그 항목을 계획대로 멈추고 결과를 돌려준다(Phase 3, "멈추기" 절) |
 | `force_stop_entry(id)` | 신호 계획 항목에만 같은 대상에 SIGKILL을 보낸다(Phase 3) |
@@ -373,6 +412,9 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
 - 행을 누르면 상세가 펼쳐진다: 프로세스 목록(PID·사용자·명령줄), 프로젝트 경로, 시작 시각, 라벨, 보호 이유.
   상세의 버튼: 열기·URL 복사(개발 서버·서비스이고 포트가 있을 때, `http://localhost:<가장 작은 포트>`), 숨기기/다시 보이기,
   개발 서버로 고정/고정 해제, 멈추기(계획이 있고 보호가 없을 때, Phase 3).
+- 주소(Phase 4): 행 제목 옆에 대표 이름(localhost가 아닌 이름 중 hosts에 있는 것 먼저)을 작게 보이고, 인증서 경고가 있으면
+  "인증서" 표시를 붙인다. 상세에는 주소마다 URL, 경유(`→ :<upstream>`·"nginx 경유"·"직접"), hosts에 없으면 "hosts에 없음",
+  인증서(발급자, mkcert면 표시, 만료일) 또는 읽지 못한 이유, 경고를 보이고 열기(hosts에 있을 때만)·복사 버튼을 둔다.
 - 멈추기를 누르면 상세 안에 확인 칸(대상·관리 주체·명령·"관리자 비밀번호가 필요합니다" 또는 "일반 권한")과 멈추기·취소 버튼이 열린다.
   실행 중에는 "멈추는 중…"을, 끝나면 결과(멈춤·다시 실행됨·아직 실행 중·취소됨·바뀜·실패)를 보인다.
   실패하면 터미널용 명령 복사 버튼을, "아직 실행 중"이고 신호 계획이면 강제 종료 버튼(한 번 더 확인)을 보인다.
@@ -452,8 +494,11 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
   (`0.0.0.0:18080->8080/tcp, 127.0.0.1:18081->8081/tcp`)의 호스트 포트로 맞추고, `docker stop <ID>`로 멈춘다.
   근거: 2026-11-19 사용자 Mac(Docker Desktop, 엔진 28.1.1)에서 시험 컨테이너로 확인했다. 환경을 비운 상태에서도 `docker ps`가 동작했다.
   OrbStack·colima는 사용자 Mac에 없어 지원하지 않는다(앱이나 분리 실행으로 보인다). 쓰게 되면 그때 형식을 확인한다. 검증: F-05, M-11.
-- [ ] DC-15: nginx 설정 읽기 방식. `nginx -T`(전체 설정 출력)와 설정 파일 직접 읽기 중 고른다.
-  `nginx -T`가 일반 권한으로 동작하는지(로그 파일 권한 등) 확인한다. Phase 4.
+- [x] DC-15: nginx 설정은 파일을 직접 읽는다("도메인 연결" 절). `nginx -T`는 쓰지 않는다.
+  근거(2026-11-19, 사용자 Mac의 brew nginx 1.27.5): 설정 파일은 사용자 소유로 읽을 수 있다. `nginx -T`는 설정 시험 중에 오류 로그를
+  쓰기로 열어서 파일을 만들 수 있고(읽기만 한다는 원칙), `sudo brew services start`로 띄운 뒤에는 로그가 root 소유가 되어 일반 권한으로
+  실패한다. 직접 읽기는 실행 파일을 실행하지 않는다. 사용자 설정은 `server_name localhost`에 location 경로별로 루프백 포트에 넘기는
+  모양이어서 `localhost`도 주소로 남긴다. 검증: F-07, M-12.
 - [x] DC-16: 갱신 주기 기본값은 창을 연 동안 3초, 닫은 동안 15초이고 설정에서 2·3·5초와 10·15·30·60초 중 고른다.
   근거: 2026-11-19 사용자가 이 기본값으로 Phase 2 앱을 써서 목록·숫자 갱신이 문제없다고 확인했고, macOS CI 실행기에서 수집 한 번이
   110 ms였다(항목 1개). 사용자 Mac의 수집 시간·CPU 수치는 받지 않았다. CPU 부담이 보고되면 닫힌 동안의 기본값부터 늘린다. 검증: M-05.

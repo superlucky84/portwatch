@@ -7,17 +7,21 @@ pub mod raw;
 pub mod report;
 pub mod stop;
 mod system;
+pub mod tls;
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
-use portwatch_core::parse;
+use portwatch_core::nginx::{self, ConfigFiles};
 use portwatch_core::project::{candidate_dirs, dir_name, package_name, PROJECT_MARKERS};
 use portwatch_core::resolve::{
     build_snapshot, plan_lookups, Facts, ServiceTarget, DEFAULT_SECURITY_NAMES,
 };
+use portwatch_core::{hosts, parse};
 use portwatch_core::{Project, Snapshot};
 
 pub use system::{RealFiles, SystemRunner};
+use tls::{CachedProbe, RustlsProbe, TlsCache, TlsProbe};
 
 pub const NETSTAT: (&str, &[&str]) = ("/usr/sbin/netstat", &["-anv", "-p", "tcp"]);
 pub const PS: (&str, &[&str]) = (
@@ -30,6 +34,7 @@ pub const PS: (&str, &[&str]) = (
 );
 pub const LAUNCHCTL: &str = "/bin/launchctl";
 pub const LSOF: &str = "/usr/sbin/lsof";
+pub const HOSTS: &str = "/etc/hosts";
 
 /// 명령 실행 결과.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -44,10 +49,12 @@ pub trait Runner: Sync {
     fn run(&self, program: &str, args: &[&str]) -> Result<CommandOutput, String>;
 }
 
-/// 프로젝트 판별용 파일 확인.
+/// 파일 읽기. 프로젝트 판별, hosts, nginx 설정에 쓴다.
 pub trait Files {
     fn exists(&self, path: &str) -> bool;
     fn read(&self, path: &str) -> Option<String>;
+    /// 폴더 안 일반 파일 이름(이름순). 읽지 못하면 비어 있다.
+    fn list_dir(&self, dir: &str) -> Vec<String>;
 }
 
 /// 수집하는 사용자와 시각.
@@ -285,6 +292,26 @@ pub fn collect_facts(runner: &dyn Runner, files: &dyn Files, env: &Environment) 
         }
     }
 
+    match files.read(HOSTS) {
+        Some(text) => facts.hosts = hosts::loopback_names(&text),
+        None => facts
+            .warnings
+            .push("hosts 파일(/etc/hosts)을 읽지 못했습니다.".to_owned()),
+    }
+    for conf in &lookups.nginx_confs {
+        match conf {
+            Ok(conf) => {
+                let config = read_nginx(files, conf, &mut facts.warnings);
+                let (routes, warnings) = nginx::routes(conf, &config);
+                facts.nginx_routes.extend(routes);
+                facts.warnings.extend(warnings);
+            }
+            Err(warning) => facts.warnings.push(warning.clone()),
+        }
+    }
+    facts.nginx_routes.sort();
+    facts.nginx_routes.dedup();
+
     let mut projects: HashMap<String, Project> = HashMap::new();
     for cwd in facts.cwd.values() {
         if projects.contains_key(cwd) {
@@ -298,13 +325,66 @@ pub fn collect_facts(runner: &dyn Runner, files: &dyn Files, env: &Environment) 
     facts
 }
 
-/// 바꿔 끼운 실행기·파일로 스냅샷을 만든다. 걸린 시간을 `collect_ms`에 담는다.
-pub fn collect_with(runner: &dyn Runner, files: &dyn Files, env: &Environment) -> Snapshot {
+/// nginx 설정 파일을 `include`까지 읽는다. 읽지 못한 파일은 [`nginx::routes`]가 경고한다.
+pub fn read_nginx(files: &dyn Files, conf: &str, warnings: &mut Vec<String>) -> ConfigFiles {
+    let dir = nginx::conf_dir(conf);
+    let mut config = ConfigFiles::default();
+    let mut queue = std::collections::VecDeque::from([conf.to_owned()]);
+    while let Some(path) = queue.pop_front() {
+        if nginx::is_pattern(&path) {
+            if config.globs.contains_key(&path) {
+                continue;
+            }
+            let matches: Vec<String> = match nginx::split_pattern(&path) {
+                Some((folder, name)) => files
+                    .list_dir(folder)
+                    .into_iter()
+                    .filter(|file| nginx::name_matches(name, file))
+                    .map(|file| format!("{}/{file}", folder.trim_end_matches('/')))
+                    .collect(),
+                None => {
+                    warnings.push(format!("nginx include 패턴을 펼치지 못했습니다: {path}"));
+                    Vec::new()
+                }
+            };
+            queue.extend(matches.iter().cloned());
+            config.globs.insert(path, matches);
+            continue;
+        }
+        if config.texts.contains_key(&path) {
+            continue;
+        }
+        if config.texts.len() >= nginx::MAX_FILES {
+            warnings.push(format!(
+                "nginx 설정 파일이 {}개를 넘어 나머지는 읽지 않았습니다.",
+                nginx::MAX_FILES
+            ));
+            break;
+        }
+        if let Some(text) = files.read(&path) {
+            queue.extend(nginx::include_paths(&text, dir));
+            config.texts.insert(path, text);
+        }
+    }
+    config
+}
+
+/// 바꿔 끼운 실행기·파일·TLS 확인으로 스냅샷을 만든다. 걸린 시간을 `collect_ms`에 담는다.
+pub fn collect_with(
+    runner: &dyn Runner,
+    files: &dyn Files,
+    tls: &dyn TlsProbe,
+    env: &Environment,
+) -> Snapshot {
     let started = std::time::Instant::now();
     let mut snapshot = build_snapshot(&collect_facts(runner, files, env));
+    tls::fill_certificates(&mut snapshot, tls, env.now_ms);
     snapshot.collect_ms = started.elapsed().as_millis() as u64;
     snapshot
 }
+
+/// 갱신마다 같은 인증서를 다시 읽지 않게 앱 전체에서 같이 쓰는 캐시.
+static TLS_CACHE: LazyLock<TlsCache> = LazyLock::new(TlsCache::default);
 
 /// 기본 보안 프로그램 목록으로 현재 상태의 스냅샷을 만든다.
 pub fn collect_snapshot() -> Snapshot {
@@ -322,7 +402,8 @@ pub fn collect_snapshot_using(security_names: Vec<String>) -> Snapshot {
             .push("macOS가 아니어서 수집하지 않았습니다.".to_owned());
         return snapshot;
     }
-    collect_with(&SystemRunner::default(), &RealFiles, &env)
+    let tls = CachedProbe::new(&RustlsProbe, &TLS_CACHE);
+    collect_with(&SystemRunner::default(), &RealFiles, &tls, &env)
 }
 
 #[cfg(test)]
@@ -381,19 +462,71 @@ pub(crate) mod fake {
     }
 
     /// 경로 목록으로 답하는 파일 확인.
-    pub struct FakeFiles(pub HashMap<&'static str, &'static str>);
+    pub struct FakeFiles(pub HashMap<String, String>);
+
+    impl FakeFiles {
+        pub fn of(entries: &[(&str, &str)]) -> Self {
+            Self(
+                entries
+                    .iter()
+                    .map(|(path, text)| ((*path).to_owned(), (*text).to_owned()))
+                    .collect(),
+            )
+        }
+    }
 
     impl Files for FakeFiles {
         fn exists(&self, path: &str) -> bool {
             self.0.contains_key(path)
         }
         fn read(&self, path: &str) -> Option<String> {
-            self.0.get(path).map(|text| (*text).to_owned())
+            self.0.get(path).cloned()
+        }
+        fn list_dir(&self, dir: &str) -> Vec<String> {
+            let mut names: Vec<String> = self
+                .0
+                .keys()
+                .filter_map(|path| path.strip_prefix(dir)?.strip_prefix('/'))
+                .filter(|name| !name.contains('/'))
+                .map(str::to_owned)
+                .collect();
+            names.sort();
+            names
+        }
+    }
+
+    /// 합성 자료의 hosts와 nginx 설정(F-07) 위치.
+    pub const NGINX_FIXTURES: [(&str, &str); 4] = [
+        ("/etc/hosts", "hosts.txt"),
+        ("/opt/homebrew/etc/nginx/nginx.conf", "nginx/nginx.conf"),
+        ("/opt/homebrew/etc/nginx/mime.types", "nginx/mime.types"),
+        (
+            "/opt/homebrew/etc/nginx/servers/shop.conf",
+            "nginx/servers/shop.conf",
+        ),
+    ];
+
+    /// 이름마다 새로 만든 자체 서명 인증서를 돌려주는 TLS 확인.
+    pub struct FakeTls;
+
+    impl tls::TlsProbe for FakeTls {
+        fn peer_certificate(
+            &self,
+            ip: std::net::IpAddr,
+            port: u16,
+            name: &str,
+        ) -> Result<Vec<u8>, String> {
+            assert!(ip.is_loopback());
+            if port != 443 {
+                return Err("인증서를 읽지 못했습니다: Connection refused".to_owned());
+            }
+            let certified = rcgen::generate_simple_self_signed(vec![name.to_owned()]).unwrap();
+            Ok(certified.cert.der().to_vec())
         }
     }
 
     pub fn files() -> FakeFiles {
-        FakeFiles(HashMap::from([
+        let mut files = FakeFiles::of(&[
             (
                 "/Users/dev/work/shop-web/package.json",
                 r#"{"name":"shop-web"}"#,
@@ -405,7 +538,11 @@ pub(crate) mod fake {
             ("/Users/dev/work/worker/.git", ""),
             ("/Users/dev/work/queue/package.json", r#"{"private":true}"#),
             ("/Users/dev/.git", "홈 폴더는 프로젝트로 보지 않는다"),
-        ]))
+        ]);
+        for (path, name) in NGINX_FIXTURES {
+            files.0.insert(path.to_owned(), fixture(name));
+        }
+        files
     }
 
     pub fn env() -> Environment {
@@ -429,7 +566,7 @@ mod tests {
     #[test]
     fn collects_the_fixture_mac_end_to_end() {
         let runner = FakeRunner::default();
-        let snapshot = collect_with(&runner, &files(), &env());
+        let snapshot = collect_with(&runner, &files(), &FakeTls, &env());
 
         assert!(snapshot.warnings.is_empty(), "{:?}", snapshot.warnings);
         assert_eq!(snapshot.entries.len(), 19);
@@ -445,8 +582,8 @@ mod tests {
                 "shop-db",
                 "Python",
                 "mock-api",
-                "redis",
-                "nginx"
+                "nginx",
+                "redis"
             ]
         );
 
@@ -457,6 +594,25 @@ mod tests {
             .unwrap();
         assert_eq!(nginx.manager.kind, ManagerKind::LaunchdBrew);
         assert!(nginx.manager.runs_as_root);
+        let urls: Vec<String> = nginx.domains.iter().map(|d| d.url()).collect();
+        assert_eq!(
+            urls,
+            ["http://localhost:8080/api", "https://shop.example.test/"]
+        );
+        let cert = nginx.domains[1].tls.as_ref().unwrap();
+        assert_eq!(cert.sans, ["shop.example.test"]);
+        assert!(cert.warnings.is_empty(), "{:?}", cert.warnings);
+
+        let shop = snapshot
+            .entries
+            .iter()
+            .find(|e| e.title == "shop-web")
+            .unwrap();
+        assert_eq!(shop.domains.len(), 1);
+        assert_eq!(shop.domains[0].via, portwatch_core::DomainVia::Proxied);
+        assert_eq!(shop.domains[0].upstream, Some(5173));
+        assert!(shop.domains[0].in_hosts);
+        assert!(shop.domains[0].tls.is_some());
 
         let python = snapshot
             .entries
@@ -487,7 +643,7 @@ mod tests {
             fail: vec!["print gui/501", "sh.brew.nginx"],
             ..FakeRunner::default()
         };
-        let snapshot = collect_with(&runner, &files(), &env());
+        let snapshot = collect_with(&runner, &files(), &FakeTls, &env());
         assert_eq!(
             snapshot.warnings,
             [
@@ -518,14 +674,50 @@ mod tests {
     }
 
     #[test]
+    fn nginx_files_are_read_through_includes_and_patterns() {
+        let files = FakeFiles::of(&[
+            (
+                "/usr/local/etc/nginx/nginx.conf",
+                "http { include sites/*.conf; include extra.conf; include /etc/*/x.conf; }",
+            ),
+            (
+                "/usr/local/etc/nginx/sites/a.conf",
+                "include ../extra.conf;",
+            ),
+            ("/usr/local/etc/nginx/sites/b.conf.off", "never read"),
+            ("/usr/local/etc/nginx/extra.conf", ""),
+        ]);
+        let mut warnings = Vec::new();
+        let config = read_nginx(&files, "/usr/local/etc/nginx/nginx.conf", &mut warnings);
+        let mut read: Vec<&str> = config.texts.keys().map(String::as_str).collect();
+        read.sort();
+        assert_eq!(
+            read,
+            [
+                "/usr/local/etc/nginx/extra.conf",
+                "/usr/local/etc/nginx/nginx.conf",
+                "/usr/local/etc/nginx/sites/a.conf"
+            ]
+        );
+        assert_eq!(
+            config.globs["/usr/local/etc/nginx/sites/*.conf"],
+            ["/usr/local/etc/nginx/sites/a.conf"]
+        );
+        assert_eq!(
+            warnings,
+            ["nginx include 패턴을 펼치지 못했습니다: /etc/*/x.conf"]
+        );
+    }
+
+    #[test]
     fn project_lookup_prefers_the_nearest_marker_and_package_name() {
-        let files = FakeFiles(HashMap::from([
+        let files = FakeFiles::of(&[
             ("/Users/dev/work/shop/package.json", r#"{"name":"shop"}"#),
             (
                 "/Users/dev/work/shop/apps/web/package.json",
                 r#"{"name":"@shop/web"}"#,
             ),
-        ]));
+        ]);
         let project =
             find_project(&files, "/Users/dev/work/shop/apps/web/src", "/Users/dev").unwrap();
         assert_eq!(project.name, "@shop/web");

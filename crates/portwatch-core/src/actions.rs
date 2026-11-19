@@ -1,5 +1,7 @@
 //! 화면에서 요청한 동작의 입력 검증. 실행은 셸이 한다(docs/DESIGN.md "화면에 노출하는 명령").
 
+use crate::snapshot::Snapshot;
+
 /// 클립보드에 넣을 수 있는 최대 글자 수.
 pub const MAX_COPY_CHARS: usize = 2_000;
 
@@ -26,6 +28,29 @@ pub fn validate_open_url(url: &str) -> Result<String, String> {
         return reject();
     }
     Ok(url.to_owned())
+}
+
+/// 루프백 주소이거나, 스냅샷의 주소 중 hosts가 루프백으로 가리키는 것의 URL만 허용한다(Phase 4).
+/// hosts에 없는 이름은 바깥 DNS로 풀려 외부로 나갈 수 있어 열지 않는다.
+pub fn validate_open_url_in(url: &str, snapshot: Option<&Snapshot>) -> Result<String, String> {
+    if let Ok(url) = validate_open_url(url) {
+        return Ok(url);
+    }
+    let known = snapshot.is_some_and(|snapshot| {
+        snapshot
+            .entries
+            .iter()
+            .flat_map(|e| &e.domains)
+            .any(|d| d.in_hosts && d.url() == url)
+    });
+    let plain = url
+        .bytes()
+        .all(|b| b.is_ascii_graphic() && !b"\"'<>\\`".contains(&b));
+    if known && plain {
+        Ok(url.to_owned())
+    } else {
+        Err(format!("열 수 없는 주소입니다: {url}"))
+    }
 }
 
 /// 클립보드에 넣을 글자. 너무 길거나 NUL이 있으면 거부한다.
@@ -65,6 +90,42 @@ mod tests {
         ] {
             assert!(validate_open_url(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn hosts_addresses_from_the_snapshot_can_be_opened() {
+        let snapshot: Snapshot = serde_json::from_value(serde_json::json!({
+            "takenAtMs": 0, "warnings": [],
+            "entries": [{
+                "id": "a", "key": "a", "title": "nginx", "category": "service",
+                "manager": { "kind": "launchd-brew", "domain": "system", "label": null, "formula": null,
+                             "container": null, "appName": null, "runsAsRoot": true },
+                "listeners": [], "processes": [], "project": null, "protection": null,
+                "domains": [
+                    { "name": "shop.example.test", "via": "nginx", "scheme": "https", "port": 443,
+                      "path": "/", "upstream": 5173, "inHosts": true, "tls": null },
+                    { "name": "intranet.example.test", "via": "nginx", "scheme": "http", "port": 8080,
+                      "path": "/", "upstream": 3000, "inHosts": false, "tls": null }
+                ]
+            }]
+        }))
+        .unwrap();
+        assert_eq!(
+            validate_open_url_in("https://shop.example.test/", Some(&snapshot)).as_deref(),
+            Ok("https://shop.example.test/")
+        );
+        assert_eq!(
+            validate_open_url_in("http://localhost:3000", None).as_deref(),
+            Ok("http://localhost:3000")
+        );
+        for bad in [
+            "http://intranet.example.test:8080/",
+            "https://shop.example.test/admin",
+            "https://other.example.test/",
+        ] {
+            assert!(validate_open_url_in(bad, Some(&snapshot)).is_err(), "{bad}");
+        }
+        assert!(validate_open_url_in("https://shop.example.test/", None).is_err());
     }
 
     #[test]

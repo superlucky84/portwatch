@@ -10,7 +10,7 @@
 
 자동 테스트는 아래 합성 자료를 쓴다. 형식은 2026-11-18 사용자 Mac 관찰을 따르되,
 사용자 이름·실제 PID·사내 정보·실제 출력 원문은 넣지 않는다. 도메인은 `.test`만 쓴다.
-F-01~F-06은 한 대의 가상 Mac 상태로 묶어 `crates/portwatch-core/tests/fixtures/mac-15/`에 명령별 출력 파일로 둔다.
+F-01~F-07은 한 대의 가상 Mac 상태로 묶어 `crates/portwatch-core/tests/fixtures/mac-15/`에 명령별 출력 파일로 둔다.
 코어의 `tests/mac_fixtures.rs`가 시나리오별로, 수집기 테스트가 같은 파일로 수집 흐름 전체를 검증한다. 사용자 이름은 `dev`, uid는 501이다.
 
 | ID | 상황 | 들어가는 출력 |
@@ -21,7 +21,7 @@ F-01~F-06은 한 대의 가상 Mac 상태로 묶어 `crates/portwatch-core/tests
 | F-04 | 잡음: launchd가 연 22번, Kerberos 88번(root), 가상의 보안 프로그램(루프백), 개발 도구의 루프백 임시 포트, `.app` 번들 프로세스 | netstat·ps·`launchctl print system` |
 | F-05 | Docker Desktop 컨테이너 두 개(5432, `0.0.0.0`과 `[::]`; 9000-9001 범위, 루프백)와 컨테이너에 맞지 않는 포트 하나(6443). `com.docker.backend services`가 연다 | netstat·ps·`docker ps --format '{{json .}}'` (형식은 DC-14) |
 | F-06 | `nohup`으로 띄워 부모가 1이 된 node, pm2 데몬 아래 node | netstat·ps·`launchctl print system` |
-| F-07 | hosts `127.0.0.1 shop.example.test`와 nginx `listen 443 ssl`·`server_name`·`proxy_pass http://127.0.0.1:3000`, `upstream` 블록 변형 | hosts·nginx 설정 |
+| F-07 | hosts `127.0.0.1 shop.example.test`(루프백이 아닌 이름 하나 포함). F-01 nginx가 443도 열고, `nginx.conf`는 `localhost:8080`의 `/api`를 3000으로(사용자 Mac 설정 모양), `servers/*`의 `shop.conf`는 `listen 443 ssl`·`upstream`으로 5173에 넘긴다. 루프백이 아닌 대상 하나 포함. 인증서는 테스트가 rcgen으로 만든다 | `hosts.txt`·`nginx/` 설정·netstat |
 
 ## 시험 준비와 정리
 
@@ -167,6 +167,8 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 
 대응: RQ-05, PR-05, DC-15. 예제: F-07.
 
+- [ ] 지금 쓰는 nginx 설정(`localhost:8080`의 location 경로별 루프백 포트) 그대로 nginx를 켜면 nginx 항목에 경로별 주소가,
+  넘겨받는 개발 서버 항목에 "nginx 경유"가 보인다.
 - [ ] hosts에 `127.0.0.1 shop.example.test`를 넣고, mkcert 인증서로 nginx가 443에서 개발 서버(3000)로 넘기게 설정한다.
 - [ ] nginx 항목과 3000번 개발 서버 항목 양쪽에 `shop.example.test`가 보인다(개발 서버에는 "nginx 경유").
 - [ ] 상세에 인증서 발급자(mkcert), 만료일이 보인다.

@@ -30,9 +30,9 @@ test('개발 서버와 서비스만 펼치고 나머지 분류는 접는다', as
   await expect(group(page, 'hidden').locator('.count')).toHaveText('1');
 
   const nginx = entry(page, 'launchd:sh.brew.nginx');
-  await expect(nginx.locator('.title')).toHaveText('nginx');
+  await expect(nginx.locator('.title .name')).toHaveText('nginx');
   await expect(nginx.locator('.ports')).toHaveText(':8080 외부');
-  await expect(nginx.locator('.badge')).toHaveText(['brew 서비스', 'root']);
+  await expect(nginx.locator('.badge')).toHaveText(['brew 서비스', 'root', '인증서']);
   await expect(entry(page, 'project:/Users/dev/work/api').locator('.ports')).toHaveText(':3000 로컬');
 
   await group(page, 'dev-tool').locator('.group-head').click();
@@ -65,8 +65,9 @@ test('열기·URL 복사·숨기기·고정은 정해진 명령만 부른다', a
   await open(page);
   const web = entry(page, 'project:/Users/dev/work/shop-web');
   await web.locator('.entry-head').click();
-  await web.getByRole('button', { name: '열기' }).click();
-  await web.getByRole('button', { name: 'URL 복사' }).click();
+  const own = web.locator('.entry-detail > .buttons');
+  await own.getByRole('button', { name: '열기' }).click();
+  await own.getByRole('button', { name: 'URL 복사' }).click();
   await expect(page.locator('#status')).toHaveText('URL을 복사했습니다.');
   await web.getByRole('button', { name: '숨기기' }).click();
   await web.getByRole('button', { name: '개발 서버로 고정' }).click();
@@ -78,6 +79,48 @@ test('열기·URL 복사·숨기기·고정은 정해진 명령만 부른다', a
     ['set_hidden', { key: 'project:/Users/dev/work/shop-web', hidden: true }],
     ['set_pinned', { key: 'project:/Users/dev/work/shop-web', pinned: true }],
   ]);
+});
+
+test('주소·경유·인증서와 경고를 보여 주고 hosts에 있는 주소만 연다', async ({ page }) => {
+  await open(page);
+  const nginx = entry(page, 'launchd:sh.brew.nginx');
+  await expect(nginx.locator('.row-domain')).toHaveText('shop.example.test');
+  await expect(nginx.locator('.badge.warn')).toHaveText('인증서');
+  await nginx.locator('.entry-head').click();
+
+  const domains = nginx.locator('.domain');
+  await expect(domains).toHaveCount(3);
+  await expect(domains.nth(0).locator('.domain-line')).toHaveText('http://localhost:8080/api→ :3000');
+  await expect(domains.nth(1).locator('.domain-line')).toHaveText('http://intranet.example.test:8080/→ :3000hosts에 없음');
+  await expect(domains.nth(1).getByRole('button', { name: '열기' })).toHaveCount(0);
+  await expect(domains.nth(2).locator('.domain-url')).toHaveText('https://shop.example.test/');
+  await expect(domains.nth(2).locator('.cert')).toHaveText('mkcert development CA (mkcert) · 2026-11-29 만료');
+  await expect(domains.nth(2).locator('.cert-warning')).toHaveText('인증서가 14일 안에 만료됩니다.');
+
+  await domains.nth(2).getByRole('button', { name: '열기' }).click();
+  await domains.nth(1).getByRole('button', { name: '복사' }).click();
+  const recorded = (await calls(page)).filter(([command]) => command !== 'get_state');
+  expect(recorded).toEqual([
+    ['open_url', { url: 'https://shop.example.test/' }],
+    ['copy_text', { text: 'http://intranet.example.test:8080/' }],
+  ]);
+
+  const web = entry(page, 'project:/Users/dev/work/shop-web');
+  await expect(web.locator('.row-domain')).toHaveText('shop.example.test');
+  await web.locator('.entry-head').click();
+  await expect(web.locator('.domain-line')).toHaveText('https://shop.example.test/nginx 경유');
+});
+
+test('읽지 못한 인증서는 이유를 보여 준다', async ({ page }) => {
+  const state = uiState();
+  const web = state.snapshot.entries.find((candidate) => candidate.title === 'shop-web');
+  web.domains[0].tls = { ...web.domains[0].tls, warnings: [], error: '인증서를 읽지 못했습니다: Connection refused' };
+  await open(page, state);
+  const row = entry(page, 'project:/Users/dev/work/shop-web');
+  await expect(row.locator('.badge.warn')).toHaveCount(0);
+  await row.locator('.entry-head').click();
+  await expect(row.locator('.cert')).toHaveText('인증서를 읽지 못했습니다: Connection refused');
+  await expect(row.locator('.cert')).toHaveClass(/muted/);
 });
 
 test('갱신 때 펼친 행과 스크롤을 유지하고 내용이 같으면 다시 그리지 않는다', async ({ page }) => {

@@ -3,13 +3,18 @@
 
 import {
   GROUPS,
+  certSummary,
   contentSignature,
   describeKey,
+  domainUrl,
+  domainVia,
   entryUrl,
   formatTime,
   groupOf,
+  hasCertWarning,
   managerLabel,
   portsText,
+  rowDomain,
 } from './view.js';
 
 const tauri = window.__TAURI__;
@@ -119,6 +124,10 @@ function buildDetail(entry) {
     detail.append(detailRow('보호', entry.protection.reason));
   }
 
+  if (entry.domains.length > 0) {
+    detail.append(buildDomains(entry));
+  }
+
   const processes = element('ul', 'processes');
   for (const process of entry.processes.slice(0, 8)) {
     const item = element('li', 'process');
@@ -161,6 +170,35 @@ function buildDetail(entry) {
   );
   detail.append(actions);
   return detail;
+}
+
+// 이 항목에 닿는 주소와 인증서(docs/DESIGN.md "도메인 연결").
+function buildDomains(entry) {
+  const list = element('ul', 'domains');
+  for (const domain of entry.domains) {
+    const url = domainUrl(domain);
+    const item = element('li', 'domain');
+    const line = element('div', 'domain-line');
+    line.append(element('span', 'domain-url', url), element('span', 'domain-via', domainVia(domain)));
+    if (!domain.inHosts) {
+      line.append(element('span', 'muted', 'hosts에 없음'));
+    }
+    item.append(line);
+    if (domain.tls) {
+      item.append(element('div', domain.tls.error ? 'cert muted' : 'cert', certSummary(domain.tls)));
+      for (const warning of domain.tls.warnings) {
+        item.append(element('div', 'cert-warning', warning));
+      }
+    }
+    const buttons = element('div', 'buttons');
+    if (domain.inHosts) {
+      buttons.append(actionButton('열기', 'open', entry.key, { url }));
+    }
+    buttons.append(actionButton('복사', 'copy', entry.key, { url }));
+    item.append(buttons);
+    list.append(item);
+  }
+  return list;
 }
 
 // 멈추기 확인·진행·결과 칸(docs/DESIGN.md "화면").
@@ -234,8 +272,17 @@ function buildEntry(entry) {
   if (entry.pinned) {
     badges.append(element('span', 'badge pinned', '고정'));
   }
+  if (hasCertWarning(entry)) {
+    badges.append(element('span', 'badge warn', '인증서'));
+  }
+  const title = element('span', 'title');
+  title.append(element('span', 'name', entry.title));
+  const domain = rowDomain(entry);
+  if (domain) {
+    title.append(element('span', 'row-domain', domain));
+  }
   head.append(
-    element('span', 'title', entry.title),
+    title,
     element('span', 'ports', portsText(entry)),
     badges,
   );

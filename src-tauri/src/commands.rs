@@ -4,7 +4,7 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
 
-use portwatch_core::actions::{validate_copy_text, validate_open_url};
+use portwatch_core::actions::{validate_copy_text, validate_open_url_in};
 use portwatch_core::resolve::DEFAULT_SECURITY_NAMES;
 use portwatch_core::settings::{Settings, SettingsUpdate, CLOSED_CHOICES, OPEN_CHOICES};
 use portwatch_core::stop::{Outcome, StopReport};
@@ -111,8 +111,8 @@ pub fn set_launch_at_login(app: AppHandle, enabled: bool) -> Result<bool, String
 }
 
 #[tauri::command]
-pub fn open_url(url: String) -> Result<(), String> {
-    let url = validate_open_url(&url)?;
+pub fn open_url(url: String, state: State<'_, AppState>) -> Result<(), String> {
+    let url = validate_open_url_in(&url, state.raw().as_ref())?;
     let status = Command::new("/usr/bin/open")
         .arg(&url)
         .stdin(Stdio::null())

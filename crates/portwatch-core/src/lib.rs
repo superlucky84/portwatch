@@ -4,6 +4,10 @@
 //! 프로세스 실행, 파일 시스템, 네트워크, macOS API를 쓰지 않는다.
 
 pub mod actions;
+pub mod cert;
+pub mod domains;
+pub mod hosts;
+pub mod nginx;
 pub mod parse;
 pub mod prefs;
 pub mod privacy;
@@ -14,6 +18,6 @@ pub mod snapshot;
 pub mod stop;
 
 pub use snapshot::{
-    Category, Domain, DomainVia, Entry, Listener, Manager, ManagerKind, ProcessInfo, Project,
-    Protection, Snapshot,
+    Category, Cert, Domain, DomainVia, Entry, Listener, Manager, ManagerKind, ProcessInfo, Project,
+    Protection, Scheme, Snapshot,
 };

@@ -1,7 +1,8 @@
 //! 판별기: 수집한 사실로 스냅샷을 만든다. docs/DESIGN.md의 "판별 순서"·"분류"·"보호 이유"를 따른다.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 
+use crate::nginx::{self, Route};
 use crate::parse::{DockerContainer, LaunchdJob, ProcessRow, ServiceDetail};
 use crate::snapshot::{
     Category, Entry, Listener, Manager, ManagerKind, ProcessInfo, Project, Protection, Snapshot,
@@ -58,6 +59,10 @@ pub struct Facts {
     pub containers: Vec<DockerContainer>,
     /// 수집하는 사용자의 홈 폴더. Docker Desktop 소켓 경로에 쓴다.
     pub home: String,
+    /// hosts가 루프백으로 가리키는 이름.
+    pub hosts: BTreeSet<String>,
+    /// nginx 설정에서 읽은 루프백 경로.
+    pub nginx_routes: Vec<Route>,
     pub self_pid: u32,
     pub current_uid: u32,
     /// 보안 프로그램 이름 조각(소문자).
@@ -72,6 +77,8 @@ pub struct Lookups {
     pub cwd_pids: Vec<u32>,
     /// Docker Desktop 포트 전달 프로세스가 포트를 열었을 때 그 앱의 docker CLI 경로.
     pub docker_cli: Option<String>,
+    /// 실행 중인 nginx master의 설정 파일. 위치를 모르면 `Err`에 경고 문장.
+    pub nginx_confs: Vec<Result<String, String>>,
 }
 
 /// 기본 보안 프로그램 이름 조각. 널리 알려진 국내 금융·인증 보안 프로그램이다.
@@ -216,6 +223,13 @@ impl<'a> Index<'a> {
 
 /// 명령줄의 첫 칸.
 fn exe_path(row: &ProcessRow) -> &str {
+    // nginx는 명령줄을 "nginx: master process <실행 파일> …"·"nginx: worker process"로 바꾼다.
+    if let Some(rest) = row.command.strip_prefix(nginx::MASTER_PREFIX) {
+        return rest.split_whitespace().next().unwrap_or("nginx");
+    }
+    if row.command.starts_with("nginx: ") {
+        return "nginx";
+    }
     row.command.split_whitespace().next().unwrap_or("")
 }
 
@@ -425,6 +439,7 @@ pub fn plan_lookups(facts: &Facts) -> Lookups {
         services,
         cwd_pids,
         docker_cli,
+        nginx_confs: nginx::conf_paths(&facts.processes),
     }
 }
 
@@ -435,6 +450,7 @@ pub fn build_snapshot(facts: &Facts) -> Snapshot {
         .into_iter()
         .map(|group| make_entry(&index, facts, group))
         .collect();
+    crate::domains::attach(&mut entries, &facts.nginx_routes, &facts.hosts);
     sort_entries(&mut entries);
     Snapshot {
         taken_at_ms: facts.taken_at_ms,
@@ -795,6 +811,27 @@ mod tests {
             family: "tcp4".into(),
             pid,
         }
+    }
+
+    #[test]
+    fn nginx_started_by_hand_is_titled_by_its_executable() {
+        let facts = Facts {
+            listeners: vec![listen(41, 18080, "127.0.0.1")],
+            processes: vec![
+                row(
+                    40,
+                    1,
+                    501,
+                    "nginx: master process /opt/homebrew/bin/nginx -c /tmp/t/nginx.conf",
+                ),
+                row(41, 40, 501, "nginx: worker process"),
+            ],
+            current_uid: 501,
+            ..Facts::default()
+        };
+        let snapshot = build_snapshot(&facts);
+        assert_eq!(snapshot.entries[0].title, "nginx");
+        assert_eq!(snapshot.entries[0].key, "exe:nginx");
     }
 
     #[test]

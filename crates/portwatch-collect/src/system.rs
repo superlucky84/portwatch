@@ -88,11 +88,24 @@ impl Files for RealFiles {
 
     fn read(&self, path: &str) -> Option<String> {
         let metadata = std::fs::metadata(path).ok()?;
-        // package.json 이름만 읽으므로 큰 파일은 건너뛴다.
+        // package.json·hosts·nginx 설정만 읽으므로 1 MB가 넘는 파일은 건너뛴다.
         if !metadata.is_file() || metadata.len() > 1_000_000 {
             return None;
         }
         std::fs::read_to_string(path).ok()
+    }
+
+    fn list_dir(&self, dir: &str) -> Vec<String> {
+        let Ok(read) = std::fs::read_dir(dir) else {
+            return Vec::new();
+        };
+        let mut names: Vec<String> = read
+            .flatten()
+            .filter(|entry| entry.path().is_file())
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .collect();
+        names.sort();
+        names
     }
 }
 

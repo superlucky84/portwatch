@@ -1,7 +1,7 @@
 //! `portwatch-probe` 기본 출력: 분류별 표.
 
 use portwatch_core::privacy::sanitize;
-use portwatch_core::{Category, Entry, ManagerKind, Snapshot};
+use portwatch_core::{Category, Domain, DomainVia, Entry, ManagerKind, Snapshot};
 
 fn category_name(category: Category) -> &'static str {
     match category {
@@ -51,6 +51,29 @@ fn ports(entry: &Entry) -> String {
         .collect();
     ports.dedup();
     ports.join(", ")
+}
+
+fn domain_line(domain: &Domain) -> String {
+    let mut line = domain.url();
+    match (domain.via, domain.upstream) {
+        (DomainVia::Nginx, Some(upstream)) => line.push_str(&format!(" → :{upstream}")),
+        (DomainVia::Proxied, _) => line.push_str(" (nginx 경유)"),
+        (DomainVia::Direct, _) => line.push_str(" (직접)"),
+        _ => {}
+    }
+    if !domain.in_hosts {
+        line.push_str(" hosts에 없음");
+    }
+    if let Some(cert) = &domain.tls {
+        match &cert.error {
+            Some(error) => line.push_str(&format!(" · {error}")),
+            None => line.push_str(&format!(" · 인증서 {}", cert.issuer)),
+        }
+        for warning in &cert.warnings {
+            line.push_str(&format!(" · {warning}"));
+        }
+    }
+    line
 }
 
 fn shorten(text: &str, max: usize) -> String {
@@ -110,6 +133,9 @@ pub fn render_table(snapshot: &Snapshot, home: &str, user: &str) -> String {
         if let Some(project) = &entry.project {
             lines.push(format!("      프로젝트: {}", hide(&project.path)));
         }
+        for domain in &entry.domains {
+            lines.push(format!("      주소: {}", domain_line(domain)));
+        }
         if let Some(top) = entry.processes.first() {
             lines.push(format!(
                 "      최상위: pid {} {}  {}",
@@ -140,12 +166,17 @@ mod tests {
 
     #[test]
     fn table_groups_entries_and_hides_the_home_path() {
-        let snapshot = collect_with(&FakeRunner::default(), &files(), &env());
+        let snapshot = collect_with(&FakeRunner::default(), &files(), &FakeTls, &env());
         let table = render_table(&snapshot, "/Users/dev", "dev");
         println!("{table}");
         assert!(table.starts_with("portwatch 탐지 결과: 항목 19개, 경고 0개, 수집 "));
         assert!(table.contains("[개발 서버]\n  api-server  :3000 로컬  (터미널)"));
-        assert!(table.contains("  nginx  :8080 외부  (brew 서비스(system) root)"));
+        assert!(table.contains("  nginx  :443 외부, :8080 외부  (brew 서비스(system) root)"));
+        assert!(table.contains("      주소: http://localhost:8080/api → :3000\n"));
+        assert!(table.contains(
+            "      주소: https://shop.example.test/ → :5173 · 인증서 rcgen self signed cert\n"
+        ));
+        assert!(table.contains("      주소: https://shop.example.test/ (nginx 경유) · 인증서"));
         assert!(table.contains("      프로젝트: ~/work/api"));
         assert!(table.contains("최상위: pid 2100 현재 사용자  npm run dev"));
         assert!(table.contains("  veraport  :16105 로컬  (앱)"));

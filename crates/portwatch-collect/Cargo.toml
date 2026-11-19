@@ -7,8 +7,12 @@ publish.workspace = true
 
 [dependencies]
 portwatch-core = { path = "../portwatch-core" }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 serde_json.workspace = true
 
 [[bin]]
 name = "portwatch-probe"
 path = "src/bin/portwatch-probe.rs"
+
+[dev-dependencies]
+rcgen = "0.14.10"

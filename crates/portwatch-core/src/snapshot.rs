@@ -135,21 +135,74 @@ pub struct Project {
     pub path: String,
 }
 
+/// 이 항목에 닿는 주소 하나. docs/DESIGN.md "도메인 연결".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Domain {
     pub name: String,
     pub via: DomainVia,
+    pub scheme: Scheme,
+    /// 브라우저가 쓰는 포트.
     pub port: u16,
-    pub tls: bool,
+    /// nginx location 경로. 기본 `/`.
+    pub path: String,
+    /// nginx가 넘기는 루프백 포트. direct는 없음.
+    pub upstream: Option<u16>,
+    /// hosts가 이 이름을 루프백으로 가리키는지. `localhost`는 항상 참.
+    pub in_hosts: bool,
+    /// https일 때 읽은 인증서.
+    pub tls: Option<Cert>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+impl Domain {
+    /// 브라우저로 열 주소. 기본 포트(http 80, https 443)는 붙이지 않는다.
+    pub fn url(&self) -> String {
+        let default_port = match self.scheme {
+            Scheme::Http => 80,
+            Scheme::Https => 443,
+        };
+        let scheme = match self.scheme {
+            Scheme::Http => "http",
+            Scheme::Https => "https",
+        };
+        if self.port == default_port {
+            format!("{scheme}://{}{}", self.name, self.path)
+        } else {
+            format!("{scheme}://{}:{}{}", self.name, self.port, self.path)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DomainVia {
-    Hosts,
+    /// 이 항목이 nginx이고 upstream으로 넘긴다.
     Nginx,
+    /// nginx를 거쳐 이 항목에 닿는다.
+    Proxied,
+    /// 이 항목이 80·443을 직접 연다.
     Direct,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Scheme {
+    Http,
+    Https,
+}
+
+/// 루프백 TLS 확인으로 읽은 인증서.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Cert {
+    pub subject: String,
+    pub sans: Vec<String>,
+    pub issuer: String,
+    pub mkcert: bool,
+    pub not_after_ms: Option<u64>,
+    pub warnings: Vec<String>,
+    /// 읽지 못한 이유. 있으면 나머지는 비어 있다.
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -199,8 +252,12 @@ mod tests {
             domains: vec![Domain {
                 name: "shop.example.test".into(),
                 via: DomainVia::Nginx,
+                scheme: Scheme::Https,
                 port: 443,
-                tls: true,
+                path: "/".into(),
+                upstream: Some(3000),
+                in_hosts: true,
+                tls: None,
             }],
             protection: None,
             stop_plan: None,
@@ -213,11 +270,32 @@ mod tests {
         assert_eq!(value["manager"]["kind"], "launchd-brew");
         assert_eq!(value["manager"]["runsAsRoot"], true);
         assert_eq!(value["domains"][0]["via"], "nginx");
+        assert_eq!(value["domains"][0]["scheme"], "https");
+        assert_eq!(value["domains"][0]["inHosts"], true);
         assert_eq!(value["key"], "launchd:sh.brew.nginx");
         assert_eq!(value["pinned"], true);
         assert_eq!(value["stopPlan"], serde_json::Value::Null);
 
         let back: Entry = serde_json::from_value(value).unwrap();
         assert_eq!(back, entry);
+    }
+
+    #[test]
+    fn domain_url_drops_the_default_port() {
+        let mut domain = Domain {
+            name: "shop.example.test".into(),
+            via: DomainVia::Nginx,
+            scheme: Scheme::Https,
+            port: 443,
+            path: "/".into(),
+            upstream: Some(3000),
+            in_hosts: true,
+            tls: None,
+        };
+        assert_eq!(domain.url(), "https://shop.example.test/");
+        domain.scheme = Scheme::Http;
+        domain.port = 8080;
+        domain.path = "/api".into();
+        assert_eq!(domain.url(), "http://shop.example.test:8080/api");
     }
 }

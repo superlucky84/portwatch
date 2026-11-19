@@ -1,15 +1,16 @@
 //! 합성 macOS 출력(tests/fixtures/mac-15)으로 파서와 판별기를 함께 검증한다.
-//! 시나리오 ID는 docs/MANUAL_TEST_CHECKLIST.md의 합성 자료 표(F-01~F-06)를 따른다.
-//! 멈추기 계획(stopPlan)도 같은 자료로 확인한다(Phase 3).
+//! 시나리오 ID는 docs/MANUAL_TEST_CHECKLIST.md의 합성 자료 표(F-01~F-07)를 따른다.
+//! 멈추기 계획(stopPlan, Phase 3)과 주소(domains, Phase 4)도 같은 자료로 확인한다.
 
 use std::collections::HashMap;
 
-use portwatch_core::parse;
+use portwatch_core::nginx::{self, ConfigFiles};
 use portwatch_core::resolve::{
     build_snapshot, plan_lookups, Facts, LaunchdDomain, ServiceTarget, DEFAULT_SECURITY_NAMES,
 };
 use portwatch_core::stop::StopMethod;
-use portwatch_core::{Category, Entry, ManagerKind, Project, Snapshot};
+use portwatch_core::{hosts, parse};
+use portwatch_core::{Category, DomainVia, Entry, ManagerKind, Project, Scheme, Snapshot};
 
 const NETSTAT: &str = include_str!("fixtures/mac-15/netstat.txt");
 const PS: &str = include_str!("fixtures/mac-15/ps.txt");
@@ -23,6 +24,27 @@ const CROSSEX: &str = include_str!("fixtures/mac-15/service-gui-kr.example.cross
 const LSOF: &str = include_str!("fixtures/mac-15/lsof-cwd.txt");
 const DOCKER: &str = include_str!("fixtures/mac-15/docker-ps.txt");
 const DOCKER_CLI: &str = "/Applications/Docker.app/Contents/Resources/bin/docker";
+const HOSTS: &str = include_str!("fixtures/mac-15/hosts.txt");
+const NGINX_CONF: &str = include_str!("fixtures/mac-15/nginx/nginx.conf");
+const NGINX_MIME: &str = include_str!("fixtures/mac-15/nginx/mime.types");
+const NGINX_SHOP: &str = include_str!("fixtures/mac-15/nginx/servers/shop.conf");
+const CONF: &str = "/opt/homebrew/etc/nginx/nginx.conf";
+
+/// 수집기가 읽었을 nginx 설정(F-07).
+fn nginx_files() -> ConfigFiles {
+    let shop = "/opt/homebrew/etc/nginx/servers/shop.conf".to_owned();
+    ConfigFiles {
+        texts: HashMap::from([
+            (CONF.to_owned(), NGINX_CONF.to_owned()),
+            (
+                "/opt/homebrew/etc/nginx/mime.types".to_owned(),
+                NGINX_MIME.to_owned(),
+            ),
+            (shop.clone(), NGINX_SHOP.to_owned()),
+        ]),
+        globs: HashMap::from([("/opt/homebrew/etc/nginx/servers/*".to_owned(), vec![shop])]),
+    }
+}
 
 fn target(domain: LaunchdDomain, label: &str) -> ServiceTarget {
     ServiceTarget {
@@ -79,6 +101,10 @@ fn snapshot() -> Snapshot {
     let (containers, skipped) = parse::docker_ps(DOCKER);
     assert_eq!(skipped, 0);
     facts.containers = containers;
+    facts.hosts = hosts::loopback_names(HOSTS);
+    let (routes, warnings) = nginx::routes(CONF, &nginx_files());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    facts.nginx_routes = routes;
     let project = |name: &str, path: &str| Project {
         name: name.to_owned(),
         path: path.to_owned(),
@@ -130,6 +156,7 @@ fn lookups_ask_only_for_launchd_details_and_own_working_folders() {
         vec![2100, 2102, 2200, 2202, 2300, 2400, 2500, 2601, 2700, 2801, 2802]
     );
     assert_eq!(lookups.docker_cli.as_deref(), Some(DOCKER_CLI));
+    assert_eq!(lookups.nginx_confs, [Ok(CONF.to_owned())]);
 }
 
 #[test]
@@ -388,6 +415,71 @@ fn without_docker_ps_the_ports_stay_with_the_docker_app() {
 }
 
 #[test]
+fn f07_nginx_paths_and_hosts_names_reach_the_upstream_servers() {
+    let snapshot = snapshot();
+    let nginx = by_port(&snapshot, 8080);
+    let summary: Vec<(DomainVia, Scheme, String, Option<u16>, bool)> = nginx
+        .domains
+        .iter()
+        .map(|d| (d.via, d.scheme, d.url(), d.upstream, d.in_hosts))
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            (
+                DomainVia::Nginx,
+                Scheme::Http,
+                "http://localhost:8080/api".to_owned(),
+                Some(3000),
+                true
+            ),
+            (
+                DomainVia::Nginx,
+                Scheme::Https,
+                "https://shop.example.test/".to_owned(),
+                Some(5173),
+                true
+            ),
+        ],
+        "루프백이 아닌 대상(intranet)과 정적 location은 빠진다"
+    );
+
+    let api = by_port(&snapshot, 3000);
+    assert_eq!(api.title, "api-server");
+    assert_eq!(api.domains.len(), 1);
+    assert_eq!(api.domains[0].via, DomainVia::Proxied);
+    assert_eq!(api.domains[0].url(), "http://localhost:8080/api");
+
+    let shop = by_port(&snapshot, 5173);
+    assert_eq!(shop.title, "shop-web");
+    assert_eq!(shop.domains[0].url(), "https://shop.example.test/");
+    assert_eq!(shop.domains[0].tls, None, "인증서는 수집기가 채운다");
+
+    let others: Vec<&str> = snapshot
+        .entries
+        .iter()
+        .filter(|e| !e.domains.is_empty())
+        .map(|e| e.title.as_str())
+        .collect();
+    assert_eq!(others, ["api-server", "shop-web", "nginx"]);
+}
+
+#[test]
+fn nginx_routes_need_a_running_nginx_on_that_port() {
+    let mut facts = first_pass();
+    facts.hosts = hosts::loopback_names(HOSTS);
+    facts.nginx_routes = nginx::routes(CONF, &nginx_files()).0;
+    // nginx가 443을 열지 않은 상태: 설정에만 있는 경로는 붙이지 않는다.
+    facts.listeners.retain(|l| l.port != 443);
+    let snapshot = build_snapshot(&facts);
+    assert!(snapshot
+        .entries
+        .iter()
+        .flat_map(|e| &e.domains)
+        .all(|d| d.port == 8080));
+}
+
+#[test]
 fn entries_are_sorted_by_category_then_port() {
     let snapshot = snapshot();
     let order: Vec<(Category, &str)> = snapshot
@@ -406,8 +498,8 @@ fn entries_are_sorted_by_category_then_port() {
             (Category::DevServer, "shop-db"),
             (Category::DevServer, "Python"),
             (Category::DevServer, "mock-api"),
-            (Category::Service, "redis"),
             (Category::Service, "nginx"),
+            (Category::Service, "redis"),
             (Category::DevTool, "sessiond"),
             (Category::DevTool, "assistant-cli"),
             (Category::App, "Docker"),

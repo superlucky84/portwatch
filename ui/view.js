@@ -71,6 +71,52 @@ export function entryUrl(entry) {
   return port ? `http://localhost:${port}` : null;
 }
 
+// 주소의 URL. 코어의 Domain::url과 같게 기본 포트는 붙이지 않는다.
+export function domainUrl(domain) {
+  const defaultPort = domain.scheme === 'https' ? 443 : 80;
+  const port = domain.port === defaultPort ? '' : `:${domain.port}`;
+  return `${domain.scheme}://${domain.name}${port}${domain.path}`;
+}
+
+export function domainVia(domain) {
+  switch (domain.via) {
+    case 'nginx':
+      return `→ :${domain.upstream}`;
+    case 'proxied':
+      return 'nginx 경유';
+    case 'direct':
+      return '직접';
+    default:
+      return '';
+  }
+}
+
+export function formatDate(ms) {
+  const date = new Date(ms);
+  return [date.getFullYear(), date.getMonth() + 1, date.getDate()]
+    .map((part, index) => (index === 0 ? String(part) : String(part).padStart(2, '0')))
+    .join('-');
+}
+
+// 인증서 한 줄 요약. 읽지 못했으면 그 이유.
+export function certSummary(cert) {
+  if (cert.error) {
+    return cert.error;
+  }
+  const issuer = cert.mkcert ? `${cert.issuer} (mkcert)` : cert.issuer;
+  return cert.notAfterMs ? `${issuer} · ${formatDate(cert.notAfterMs)} 만료` : issuer;
+}
+
+// 행에 보여 줄 대표 이름. localhost가 아닌 이름 중 hosts에 있는 것을 먼저 고른다.
+export function rowDomain(entry) {
+  const named = entry.domains.filter((domain) => domain.name !== 'localhost');
+  return (named.find((domain) => domain.inHosts) ?? named[0])?.name ?? null;
+}
+
+export function hasCertWarning(entry) {
+  return entry.domains.some((domain) => domain.tls && domain.tls.warnings.length > 0);
+}
+
 // 설정 화면에 보여 줄 key 설명.
 export function describeKey(key) {
   const [kind, ...rest] = key.split(':');

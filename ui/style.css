@@ -214,6 +214,54 @@ input:focus-visible {
   color: var(--pinned-fg);
 }
 
+.badge.warn {
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+}
+
+.row-domain {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.domains {
+  margin: 6px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.domain {
+  padding: 4px 0;
+  border-top: 1px solid var(--line);
+}
+
+.domain-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.domain-url {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.domain-via,
+.cert {
+  color: var(--muted);
+}
+
+.cert-warning {
+  color: var(--danger-fg);
+}
+
+.domain .buttons {
+  margin-top: 2px;
+}
+
 .entry-detail {
   margin: 2px 4px 8px 12px;
   font-size: 12px;
