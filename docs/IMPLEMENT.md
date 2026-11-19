@@ -9,7 +9,8 @@
 - 완료(2026-11-18): 기존 도구 검토. 사용자가 LeftOpen을 직접 시험했고 root로 띄운 서비스를 잡지 못했다.
 - 완료(2026-11-18): 계획 문서 4종 초안. 사용자 결정 DC-01(Tauri)·DC-02(서명 없이 시작)·DC-04~06을 반영했다.
 - 완료(2026-11-18): Phase 0 부트스트랩. 사용자 Mac에서 메뉴바 아이콘·Dock 숨김·창 열고 닫기·종료를 확인했다.
-- 진행 중(2026-11-18): Phase 1 탐지 코어. 코어·수집기·probe 구현과 Linux 테스트 완료, Mac 확인이 남았다.
+- 완료(2026-11-19): Phase 1 탐지 코어. 사용자 Mac에서 root·사용자 brew 서비스, 터미널 서버, 잡음 분류를 probe로 확인했다.
+- 다음(2026-11-19): Phase 2 메뉴바 목록 화면.
 - 탐지 기능은 아직 없다. 앱은 빈 목록만 보여준다.
 
 상세 계약을 바꾸면 요구사항·설계·단계·수동 기준을 같은 작업에서 갱신한다.
@@ -106,7 +107,7 @@ Files:
 - `ui/main.js` (added)
 - `ui/style.css` (added)
 
-## Phase 1 — 탐지 코어 (읽기 전용): 진행 중
+## Phase 1 — 탐지 코어 (읽기 전용): 완료
 
 Refs: RQ-02, RQ-03, RQ-04, PR-03, PR-04, DC-07, DC-08, DC-09, DC-11, DC-12, M-01, M-02, M-03, M-04
 
@@ -126,7 +127,7 @@ Refs: RQ-02, RQ-03, RQ-04, PR-03, PR-04, DC-07, DC-08, DC-09, DC-11, DC-12, M-01
 - [x] 합성 자료 F-01~F-04·F-06과 판별·수집 테스트(F-02는 DC-11 확인 전까지 가정한 형식).
 - [x] 메뉴바 앱의 `get_snapshot`이 실제 수집을 별도 스레드에서 실행한다. 목록 화면은 Phase 2에서 만든다.
 - [x] macOS CI: artifact에 `portwatch-probe`를 함께 넣고(`archive: false`로 이중 압축 없앰), 실행기에서 probe를 한 번 돌린다.
-- [ ] 사용자 Mac에서 `portwatch-probe`와 `--raw` 결과로 DC-11(사용자 서비스 형식)·ps 형식을 확인하고 합성 자료를 맞춘다.
+- [x] 사용자 Mac에서 `portwatch-probe`와 `--raw` 결과로 DC-11(사용자 서비스 형식)·ps 형식을 확인하고 합성 자료를 맞춘다.
 
 기준 검증: `npm test`의 파서·판별·수집 흐름 테스트. F-01(root brew nginx: master·worker)이 `launchd-brew`·system·`nginx`·root로 판별된다.
 종료 기준: 사용자 Mac에서 `portwatch-probe` 결과가 M-01~M-04의 탐지 기준을 만족한다. DC-11·DC-12를 결과와 함께 닫는다.
@@ -157,6 +158,45 @@ Refs: RQ-02, RQ-03, RQ-04, PR-03, PR-04, DC-07, DC-08, DC-09, DC-11, DC-12, M-01
 사용자 Mac 2차(2026-11-19, 커밋 `ab0d848`, run 44441488154의 probe): 항목 14개. 개발 서버는 모노레포 서버 1개, 서비스는 root nginx 1개만
 남았다. 분리 실행 데몬과 코딩 도구 3개(제목은 실행 파일 이름, 프로젝트는 따로 표시)는 개발 도구, 보안 프로그램 6개·Apple 서비스·
 launchd 소켓은 시스템·보안으로 접혔다. DC-12를 닫았다. CI run 44441488154는 Linux·macOS 모두 성공(macOS 작업 약 1분 44초).
+
+사용자 Mac 3차(2026-11-19): root nginx를 멈추고 소유자를 되돌린 뒤 `brew services start nginx`(sudo 없음)로 띄웠다. probe에서
+nginx가 "brew 서비스(user)", 라벨 `sh.brew.nginx`, `root` 표시 없이 한 항목(master·worker)으로 나왔다(M-02 탐지).
+사용자 도메인에서도 brew 라벨이 `sh.brew.*`였다. 그 밖의 분류는 2차와 같았다.
+
+종료 판단(2026-11-19): M-01·M-02·M-04의 탐지 기준을 사용자 Mac probe로 확인했다. M-03은 터미널 서버 1개만 실제로 봤고,
+여러 서버·감시 도구 경우는 합성 자료(F-03) 테스트로 확인했으며 실제 확인은 Phase 2 화면 확인과 Phase 7로 넘긴다.
+화면 표시(접기·숨기기·자동 갱신)는 Phase 2 범위다.
+
+Files:
+- `.github/workflows/ci.yml` (modified)
+- `README.md` (modified)
+- `crates/portwatch-collect/src/bin/portwatch-probe.rs` (modified)
+- `crates/portwatch-collect/src/lib.rs` (modified)
+- `crates/portwatch-collect/src/raw.rs` (added)
+- `crates/portwatch-collect/src/report.rs` (added)
+- `crates/portwatch-collect/src/system.rs` (added)
+- `crates/portwatch-core/Cargo.toml` (modified)
+- `crates/portwatch-core/src/lib.rs` (modified)
+- `crates/portwatch-core/src/parse.rs` (added)
+- `crates/portwatch-core/src/privacy.rs` (added)
+- `crates/portwatch-core/src/project.rs` (added)
+- `crates/portwatch-core/src/resolve.rs` (added)
+- `crates/portwatch-core/src/snapshot.rs` (modified)
+- `crates/portwatch-core/tests/fixtures/mac-15/launchctl-gui.txt` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/launchctl-system.txt` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/lsof-cwd.txt` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/netstat.txt` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/ps.txt` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/service-gui-homebrew.mxcl.redis.txt` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/service-gui-kr.example.crossex-service.txt` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/service-system-com.apple.Kerberos.kdc.txt` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/service-system-com.vendor.agentd.txt` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/service-system-sh.brew.nginx.txt` (added)
+- `crates/portwatch-core/tests/mac_fixtures.rs` (added)
+- `docs/DESIGN.md` (modified)
+- `docs/IMPLEMENT.md` (modified)
+- `docs/MANUAL_TEST_CHECKLIST.md` (modified)
+- `src-tauri/src/main.rs` (modified)
 
 ## Phase 2 — 메뉴바 목록 화면: 대기
 
@@ -252,14 +292,12 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
 
 이 프로젝트의 현재 인계는 이 블록 하나다. 이전 내용은 git 이력에 남는다.
 
-- 현재 작업(2026-11-18): Phase 1 탐지 코어. 파서·판별기·수집기·`portwatch-probe` 구현과 Linux 테스트(34개) 완료.
-  macOS 실행기(15.8.2)에서 probe와 출력 형식을 확인했다(CI run 44282667243). 사용자 Mac 1차 결과로 DC-11을 닫고,
-  분류 규칙 네 가지를 고쳤다. 2차 결과로 DC-12를 닫았다.
-  메뉴바 앱은 실제 수집을 하지만 목록 화면은 Phase 2에서 만든다.
-- 확인된 사실: 사용자 Mac에서 sudo 없이 root nginx를 netstat·ps·launchctl로 판별할 수 있었다(REQUIREMENTS.md).
-  사용자 Mac은 macOS 15.6.1, arm64다. Phase 0 앱 실행도 사용자 Mac에서 확인했다.
+- 현재 작업(2026-11-19): Phase 1 탐지 코어 완료. 파서·판별기·수집기·`portwatch-probe`, 테스트 36개.
+  사용자 Mac에서 root·사용자 brew 서비스, 터미널 서버, 잡음 분류를 probe로 확인했다. DC-11·DC-12를 닫았다.
+  메뉴바 앱은 실제 수집을 하지만 창에는 아직 항목 수만 보인다.
+- 확인된 사실: 사용자 Mac은 macOS 15.6.1, arm64. sudo 없이 root 서비스까지 판별된다. brew 서비스 라벨은 사용자·root 모두 `sh.brew.*`였다.
 - 사용자 결정: macOS 전용, 메뉴바 앱·brew 설치·Spotlight 실행, 문서 기반 개발과 `main`, Tauri, Apple 서명 없이 시작.
-- 다음: Phase 1 마무리. 사용자 Mac에서 brew 사용자 서비스(M-02) 한 건을 probe로 확인하면 Files를 기록하고 Phase 1을 닫는다.
-  사용자가 생략하면 M-02 실제 확인은 Phase 7로 넘기고 그 사유를 기록한다. 이어서 리뷰 여부를 묻고 Phase 2(목록 화면)로 간다.
-- 차단: Phase 5 전에 DC-18(비공개 저장소의 배포 위치)을 사용자가 정해야 한다. Phase 1~4에는 차단 없음.
-- 커밋: 계획 `4384fd2`, Phase 0 `cdab5cf`·`79a25b8`, Phase 1 구현 `b9d2e44`, 그리고 이 인계를 포함한 CI 기록 커밋(`main`).
+- 다음: 사용자에게 Phase 1 리뷰 여부를 묻는다. 그다음 Phase 2(메뉴바 목록 화면, DC-16 갱신 주기, DC-20 화면 구현 방식)를 시작한다.
+- 차단: Phase 5 전에 DC-18(비공개 저장소의 배포 위치)을 사용자가 정해야 한다. Phase 2~4에는 차단 없음.
+- 커밋: 계획 `4384fd2`, Phase 0 `cdab5cf`·`79a25b8`, Phase 1 `b9d2e44`·`5e94554`·`ab0d848`·`f288330`,
+  그리고 이 인계를 포함한 Phase 1 마무리 커밋(`main`).

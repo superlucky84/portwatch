@@ -62,7 +62,7 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 - [ ] sudo 없이 `brew services start <포뮬러>`로 서비스를 띄운다.
 - [ ] 항목에 `brew 서비스` 표시가 있고 `root` 표시는 없다.
 
-통과: 사용자 서비스와 root 서비스가 구분된다. 상태: 미실행.
+통과: 사용자 서비스와 root 서비스가 구분된다. 상태: 탐지는 2026-11-19 사용자 Mac에서 `portwatch-probe`로 확인(nginx가 `brew 서비스(user)`, root 표시 없음). 화면 표시는 Phase 2 이후.
 
 ### M-03 — 터미널 개발 서버 여러 개
 
