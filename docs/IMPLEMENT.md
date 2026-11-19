@@ -10,8 +10,8 @@
 - 완료(2026-11-18): 계획 문서 4종 초안. 사용자 결정 DC-01(Tauri)·DC-02(서명 없이 시작)·DC-04~06을 반영했다.
 - 완료(2026-11-18): Phase 0 부트스트랩. 사용자 Mac에서 메뉴바 아이콘·Dock 숨김·창 열고 닫기·종료를 확인했다.
 - 완료(2026-11-19): Phase 1 탐지 코어. 사용자 Mac에서 root·사용자 brew 서비스, 터미널 서버, 잡음 분류를 probe로 확인했다.
-- 다음(2026-11-19): Phase 2 메뉴바 목록 화면.
-- 탐지 기능은 아직 없다. 앱은 빈 목록만 보여준다.
+- 완료(2026-11-19): Phase 2 메뉴바 목록 화면. 사용자 Mac에서 목록·접기·숨기기·고정·자동 갱신·아이콘 숫자·열기·복사·설정을 확인했다.
+- 다음: Phase 3 멈추기. 지금 앱은 보기·숨기기·고정까지 하고 멈추기는 아직 없다.
 
 상세 계약을 바꾸면 요구사항·설계·단계·수동 기준을 같은 작업에서 갱신한다.
 미구현 명령이나 테스트를 이미 쓸 수 있는 것으로 안내하지 않는다.
@@ -198,7 +198,7 @@ Files:
 - `docs/MANUAL_TEST_CHECKLIST.md` (modified)
 - `src-tauri/src/main.rs` (modified)
 
-## Phase 2 — 메뉴바 목록 화면: 진행 중
+## Phase 2 — 메뉴바 목록 화면: 완료
 
 Refs: RQ-02, RQ-07, PR-03, PR-04, PR-06, PR-07, PR-08, DC-16, DC-20, M-03, M-04, M-05
 
@@ -212,7 +212,7 @@ Refs: RQ-02, RQ-07, PR-03, PR-04, PR-06, PR-07, PR-08, DC-16, DC-20, M-03, M-04,
 - [x] 화면(`ui/main.js`·`ui/view.js`): 분류별 목록과 접기, 행 상세, 열기·URL 복사, 숨기기·고정, 설정 화면, 경고 줄,
   갱신 때 상태 유지(내용이 같으면 다시 그리지 않음). 바깥 문자열은 모두 `textContent`로 넣는다.
 - [x] 화면 테스트 `npm run test:ui`(가짜 `window.__TAURI__`, Playwright 1.63.0) 8개와 Linux CI 추가.
-- [ ] 사용자 Mac: 수집 시간·CPU 측정으로 DC-16 확정, M-03~M-05 확인.
+- [x] 사용자 Mac: M-03~M-05 확인, DC-16 확정(측정값 대신 사용 확인과 CI 측정으로, 아래 기록 참고).
 
 기준 검증: `npm run check`·`npm test`·`npm run test:ui` 통과, `npm run check:app`(Linux) 통과, macOS CI 빌드 성공.
 종료 기준: 사용자 Mac에서 M-03~M-05 통과(목록·접기·숨기기·고정·자동 갱신·아이콘 숫자). DC-16을 측정값과 함께 닫는다.
@@ -226,6 +226,46 @@ Refs: RQ-02, RQ-07, PR-03, PR-04, PR-06, PR-07, PR-08, DC-16, DC-20, M-03, M-04,
 - 아직 확인하지 않은 것: 실제 Tauri 셸의 갱신 루프·아이콘 숫자·자동 실행·설정 파일·열기·복사(macOS에서만 확인 가능).
 - CI run 44479705892(커밋 `326e73a`, 수동): Linux 성공(check·test·test:ui, Playwright 브라우저 설치 약 2분 포함),
   macOS 성공(작업 약 2분). macOS 15.8.2 실행기에서 probe 수집 시간은 110 ms였다(항목 1개). artifact 3.65 MB.
+
+사용자 Mac 확인(2026-11-19, run 44479705892의 앱): 안내한 M-03~M-05 항목이 "모두 잘 됨". 서로 다른 프로젝트의 개발 서버가 프로젝트
+이름으로 구분되고, 개발 서버·서비스만 펼쳐 시작하며, 상세·숨기기·다시 보이기·개발 서버로 고정, 아이콘 옆 숫자와 창을 닫은 동안의 갱신,
+열기·URL 복사, 설정 유지(갱신 주기·자동 실행), Esc 닫기가 동작했다. 수집 시간·CPU 수치는 따로 받지 않았다.
+DC-16은 기본값(3초·15초)으로 사용 중 문제가 없었다는 확인과 CI 측정(110 ms)으로 닫았다.
+
+Files:
+- `.github/workflows/ci.yml` (modified)
+- `.gitignore` (modified)
+- `AGENTS.md` (modified)
+- `Cargo.lock` (modified)
+- `README.md` (modified)
+- `crates/portwatch-collect/src/lib.rs` (modified)
+- `crates/portwatch-collect/src/report.rs` (modified)
+- `crates/portwatch-core/src/actions.rs` (added)
+- `crates/portwatch-core/src/lib.rs` (modified)
+- `crates/portwatch-core/src/prefs.rs` (added)
+- `crates/portwatch-core/src/resolve.rs` (modified)
+- `crates/portwatch-core/src/settings.rs` (added)
+- `crates/portwatch-core/src/snapshot.rs` (modified)
+- `crates/portwatch-core/tests/mac_fixtures.rs` (modified)
+- `docs/DESIGN.md` (modified)
+- `docs/IMPLEMENT.md` (modified)
+- `docs/MANUAL_TEST_CHECKLIST.md` (modified)
+- `package-lock.json` (modified)
+- `package.json` (modified)
+- `playwright.config.mjs` (added)
+- `scripts/serve-ui.mjs` (added)
+- `src-tauri/Cargo.toml` (modified)
+- `src-tauri/src/commands.rs` (added)
+- `src-tauri/src/main.rs` (modified)
+- `src-tauri/src/refresh.rs` (added)
+- `src-tauri/src/state.rs` (added)
+- `src-tauri/tauri.conf.json` (modified)
+- `tests/ui/fake-tauri.mjs` (added)
+- `tests/ui/popover.spec.mjs` (added)
+- `ui/index.html` (modified)
+- `ui/main.js` (modified)
+- `ui/style.css` (modified)
+- `ui/view.js` (added)
 
 ## Phase 3 — 멈추기: 대기
 
@@ -305,12 +345,12 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
 
 이 프로젝트의 현재 인계는 이 블록 하나다. 이전 내용은 git 이력에 남는다.
 
-- 현재 작업(2026-11-19): Phase 2 메뉴바 목록 화면. 코어·수집기·셸·화면 구현과 Linux 검증(Rust 43개, 화면 8개) 완료.
-  macOS CI 빌드와 사용자 Mac 확인(M-03~M-05, DC-16 측정)이 남았다.
+- 현재 작업(2026-11-19): Phase 2 메뉴바 목록 화면 완료. 사용자 Mac에서 M-03~M-05를 확인했고 DC-16을 닫았다.
+  앱은 탐지·목록·숨기기·고정·자동 갱신·설정까지 한다. 멈추기는 Phase 3이다.
 - 확인된 사실: 사용자 Mac은 macOS 15.6.1, arm64. sudo 없이 root 서비스까지 판별된다. brew 서비스 라벨은 사용자·root 모두 `sh.brew.*`였다.
 - 사용자 결정: macOS 전용, 메뉴바 앱·brew 설치·Spotlight 실행, 문서 기반 개발과 `main`, Tauri, Apple 서명 없이 시작,
   Phase 1 리뷰 없이 Phase 2 진행(2026-11-19).
-- 다음: 사용자가 run 44479705892의 앱을 실행해 M-03~M-05를 보고, 창 아래쪽 수집 시간과 활동 모니터의 CPU를 알려 주면
-  DC-16을 닫고 Phase 2를 마친다.
-- 차단: Phase 5 전에 DC-18(비공개 저장소의 배포 위치)을 사용자가 정해야 한다. Phase 2~4에는 차단 없음.
-- 커밋: 계획 `4384fd2`, Phase 0 `cdab5cf`·`79a25b8`, Phase 1 `b9d2e44`~`964f205`, 그리고 이 인계를 포함한 Phase 2 구현 커밋(`main`).
+- 다음: 사용자에게 Phase 2 리뷰 여부를 묻는다. 그다음 Phase 3(멈추기: DC-13 범위, DC-14 Docker 형식, DC-17 root brew 서비스 명령)을 시작한다.
+- 차단: Phase 5 전에 DC-18(비공개 저장소의 배포 위치)을 사용자가 정해야 한다. Phase 3~4에는 차단 없음.
+- 커밋: 계획 `4384fd2`, Phase 0 `cdab5cf`·`79a25b8`, Phase 1 `b9d2e44`~`964f205`, Phase 2 `326e73a`·`63e3e45`,
+  그리고 이 인계를 포함한 Phase 2 마무리 커밋(`main`).
