@@ -81,6 +81,9 @@ pub const DEFAULT_SECURITY_NAMES: &[&str] = &[
     "astx",
     "wizvera",
     "ksbiz",
+    "ahnlab",
+    "iniline",
+    "interezen",
 ];
 
 const SHELLS: &[&str] = &[
@@ -410,17 +413,21 @@ fn make_entry(index: &Index, facts: &Facts, group: Group) -> Entry {
         .iter()
         .flat_map(|l| index.chain(l.pid))
         .collect();
-    let security = chains.iter().any(|row| matches_security(facts, row));
     let executable = detail
         .and_then(ServiceDetail::executable)
         .map(str::to_owned)
         .or_else(|| top.map(|row| exe_path(row).to_owned()))
         .unwrap_or_default();
+    let security = chains
+        .iter()
+        .map(|row| row.command.as_str())
+        .chain(manager.label.as_deref())
+        .chain([executable.as_str()])
+        .any(|text| matches_security(facts, text));
     let ephemeral = group
         .listeners
         .iter()
         .all(|l| is_loopback(&l.address) && l.port >= 49152);
-    let category = category(&group, &manager, security, &executable, ephemeral);
 
     let project = wants_project(&group)
         .then(|| {
@@ -433,7 +440,15 @@ fn make_entry(index: &Index, facts: &Facts, group: Group) -> Entry {
                 .cloned()
         })
         .flatten();
-    let title = title(index, &group, &manager, project.as_ref());
+    let category = category(
+        &group,
+        &manager,
+        security,
+        &executable,
+        ephemeral,
+        project.is_some(),
+    );
+    let title = title(index, &group, &manager, category, project.as_ref());
     let protection = protection(facts, &group, &manager, category, top);
 
     // launchd(PID 1) 아래는 모든 프로세스라서 소켓 항목은 PID 1만 둔다.
@@ -509,13 +524,13 @@ fn manager(group: &Group, top: Option<&ProcessRow>, detail: Option<&ServiceDetai
     }
 }
 
-fn matches_security(facts: &Facts, row: &ProcessRow) -> bool {
-    let name = exe_name(row).to_lowercase();
-    let app = app_name(&row.command).unwrap_or_default().to_lowercase();
+/// 명령줄·라벨·실행 경로에 보안 프로그램 이름이 들어 있는지. 경로에 공백이 있어도 맞도록 전체를 본다.
+fn matches_security(facts: &Facts, text: &str) -> bool {
+    let text = text.to_lowercase();
     facts
         .security_names
         .iter()
-        .any(|needle| name.contains(needle.as_str()) || app.contains(needle.as_str()))
+        .any(|needle| !needle.is_empty() && text.contains(needle.as_str()))
 }
 
 fn category(
@@ -524,6 +539,7 @@ fn category(
     security: bool,
     executable: &str,
     ephemeral: bool,
+    has_project: bool,
 ) -> Category {
     if group.kind == Kind::LaunchdSocket || security {
         return Category::System;
@@ -560,11 +576,19 @@ fn category(
         ManagerKind::Detached | ManagerKind::Unknown if is_system_path(executable) => {
             Category::System
         }
+        // 작업 폴더가 프로젝트가 아닌 분리 실행(데몬은 보통 `/`에서 돈다)은 개발 서버보다 도구에 가깝다.
+        ManagerKind::Detached if !has_project => Category::DevTool,
         _ => user_side(ephemeral),
     }
 }
 
-fn title(index: &Index, group: &Group, manager: &Manager, project: Option<&Project>) -> String {
+fn title(
+    index: &Index,
+    group: &Group,
+    manager: &Manager,
+    category: Category,
+    project: Option<&Project>,
+) -> String {
     let fallback = || {
         group
             .listeners
@@ -579,6 +603,8 @@ fn title(index: &Index, group: &Group, manager: &Manager, project: Option<&Proje
         ManagerKind::LaunchdOther => manager.label.clone().unwrap_or_else(fallback),
         ManagerKind::LaunchdSocket => "launchd".to_owned(),
         ManagerKind::App if group.app_top => manager.app_name.clone().unwrap_or_else(fallback),
+        // 도구는 작업 중인 프로젝트가 아니라 도구 이름으로 보여 준다.
+        _ if category == Category::DevTool => fallback(),
         _ => project.map(|p| p.name.clone()).unwrap_or_else(fallback),
     }
 }

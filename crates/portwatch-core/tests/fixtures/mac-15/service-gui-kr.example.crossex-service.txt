@@ -1,0 +1,19 @@
+gui/501/kr.example.crossex-service = {
+	active count = 1
+	path = /Users/dev/Library/LaunchAgents/kr.example.crossex-service.plist
+	type = LaunchAgent
+	state = running
+
+	program = /Library/Application Support/Example/CrossEX/CrossEXService
+	arguments = {
+		/Library/Application Support/Example/CrossEX/CrossEXService
+	}
+
+	inherited environment = {
+		SSH_AUTH_SOCK => /private/tmp/example/Listeners
+	}
+
+	domain = gui/501 [100002]
+	pid = 610
+	properties = runatload | inferred program
+}

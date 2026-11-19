@@ -21,10 +21,13 @@ fcwd
 n/Users/dev/notes
 p2400
 fcwd
-n/Users/dev
+n/Users/dev/work/api
 p2500
 fcwd
 n/Users/dev/work/worker
 p2601
 fcwd
 n/Users/dev/work/queue
+p2700
+fcwd
+n/

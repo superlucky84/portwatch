@@ -2,6 +2,8 @@
   147     1   147     0 ??       root     Mon Nov 16 08:00:01 2026 /usr/sbin/kdc
   350     1   350     0 ??       root     Mon Nov 16 08:00:05 2026 /Library/Application Support/Vendor/agentd --serve
   600     1   600   501 ??       dev      Mon Nov 16 08:01:00 2026 /Applications/veraport.app/Contents/MacOS/veraport
+  610     1   610   501 ??       dev      Mon Nov 16 08:01:05 2026 /Library/Application Support/Example/CrossEX/CrossEXService
+  611   610   610   501 ??       dev      Mon Nov 16 08:01:06 2026 /Library/Application Support/Example/CrossEX/CrossEXService -d
   700     1   700   501 ??       dev      Mon Nov 16 08:01:10 2026 /Applications/Player.app/Contents/MacOS/Player
   900     1   900   501 ??       dev      Mon Nov 16 08:02:00 2026 /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal
  1100     1  1100     0 ??       root     Wed Nov 18 09:00:00 2026 nginx: master process /opt/homebrew/opt/nginx/bin/nginx -g daemon off;
@@ -27,3 +29,4 @@
  2500     1  2500   501 ??       dev      Wed Nov 18 09:17:00 2026 node /Users/dev/work/worker/index.js
  2600     1  2600   501 ??       dev      Wed Nov 18 09:18:00 2026 PM2 v5.4.2: God Daemon (/Users/dev/.pm2)
  2601  2600  2601   501 ??       dev      Wed Nov 18 09:18:01 2026 node /Users/dev/work/queue/app.js
+ 2700     1  2700   501 ??       dev      Wed Nov 18 09:19:00 2026 /opt/homebrew/Cellar/sessiond/1.0.0/bin/sessiond daemon start

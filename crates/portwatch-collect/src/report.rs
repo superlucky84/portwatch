@@ -142,7 +142,7 @@ mod tests {
         let snapshot = collect_with(&FakeRunner::default(), &files(), &env());
         let table = render_table(&snapshot, "/Users/dev", "dev");
         println!("{table}");
-        assert!(table.starts_with("portwatch 탐지 결과: 항목 13개, 경고 0개"));
+        assert!(table.starts_with("portwatch 탐지 결과: 항목 15개, 경고 0개"));
         assert!(table.contains("[개발 서버]\n  api-server  :3000 로컬  (터미널)"));
         assert!(table.contains("  nginx  :8080 외부  (brew 서비스(system) root)"));
         assert!(table.contains("      프로젝트: ~/work/api"));

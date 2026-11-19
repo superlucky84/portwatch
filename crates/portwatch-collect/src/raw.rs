@@ -196,6 +196,7 @@ mod tests {
         assert!(all.contains("~/work/api"));
         assert!(all.contains("login -pf <user>"));
         assert!(!all.contains("PATH =>"), "환경 변수 블록을 뺀다");
+        assert!(!all.contains("SSH_AUTH_SOCK"));
         assert!(all.contains("default environment = { (환경 변수 생략) }"));
 
         let netstat = &sections[0].body;
@@ -216,8 +217,8 @@ mod tests {
 
         assert_eq!(
             sections.len(),
-            4 + 4 + 1,
-            "목록 4개, 서비스 상세 4개, lsof 1개"
+            4 + 5 + 1,
+            "목록 4개, 서비스 상세 5개, lsof 1개"
         );
     }
 }

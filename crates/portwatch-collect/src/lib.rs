@@ -378,7 +378,7 @@ mod tests {
         let snapshot = collect_with(&runner, &files(), &env());
 
         assert!(snapshot.warnings.is_empty(), "{:?}", snapshot.warnings);
-        assert_eq!(snapshot.entries.len(), 13);
+        assert_eq!(snapshot.entries.len(), 15);
         let titles: Vec<&str> = snapshot.entries.iter().map(|e| e.title.as_str()).collect();
         assert_eq!(
             &titles[..7],
@@ -411,7 +411,8 @@ mod tests {
 
         let calls = runner.calls.lock().unwrap();
         assert!(calls.contains(
-            &"/usr/sbin/lsof -a -p 2100,2102,2200,2202,2300,2400,2500,2601 -d cwd -Fn".to_owned()
+            &"/usr/sbin/lsof -a -p 2100,2102,2200,2202,2300,2400,2500,2601,2700 -d cwd -Fn"
+                .to_owned()
         ));
         assert!(calls.contains(&"/bin/launchctl print gui/501/homebrew.mxcl.redis".to_owned()));
         assert!(calls.contains(

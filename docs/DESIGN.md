@@ -156,18 +156,20 @@ listener마다 `ps` 정보로 부모를 따라 올라가 조상 목록을 만든
 
 | 분류 | 규칙 (제안) | 기본 화면 |
 | --- | --- | --- |
-| system | `launchd-socket`; 조상 중 보안 프로그램 목록과 이름이 맞는 프로세스가 있음; system 도메인의 `launchd-other`;
+| system | `launchd-socket`; 보안 프로그램 목록과 맞음(아래 설명); system 도메인의 `launchd-other`;
 `com.apple.` 라벨; `app`(앱 자체)·`detached`·`unknown` 중 실행 파일이 `/System/`·`/usr/libexec/`·`/usr/sbin/`·`/sbin/` 아래 | 접힘, 멈추기 금지 |
 | service | `launchd-brew`, user 도메인의 `launchd-other` | 펼침 |
 | dev-server | `terminal`·`detached`·`pm2`·`docker`·앱 아래에서 띄운 프로세스이고, 루프백 임시 포트만 열지 않음 | 펼침 |
-| dev-tool | 위 dev-server 조건이지만 루프백 주소(`127.*`, `::1`)의 임시 포트(49152~65535)만 엶(도구 사이 통신으로 추정). user 도메인 `launchd-other`도 같다 | 접힘 |
+| dev-tool | 위 dev-server 조건이지만 루프백 주소(`127.*`, `::1`)의 임시 포트(49152~65535)만 엶(도구 사이 통신으로 추정). user 도메인 `launchd-other`도 같다. 프로젝트를 찾지 못한 `detached`(작업 폴더가 `/`인 데몬 등)도 여기에 둔다 | 접힘 |
 | app | `.app` 번들 프로세스 자체가 포트를 엶 | 접힘 |
 
 system 도메인의 `launchd-other`를 system으로 보는 이유: 개발용 root 서비스는 대부분 brew로 띄우고(`launchd-brew`),
 그 밖의 system 도메인 서비스는 보안 에이전트 같은 외부 프로그램이었다(2026-11-18 관찰: root로 도는 21300·29919·39919번 등).
 
 보안 프로그램 목록은 기본값을 두고 사용자가 고칠 수 있게 한다(설정 화면은 Phase 2). 기본값은 널리 알려진 국내 금융·인증 보안
-프로그램 이름(예: veraport, CrossEX, AnySign, nProtect, TouchEn)이며 실행 파일 이름에 대소문자 구분 없이 포함되는지로 맞춘다.
+프로그램과 제조사 이름(예: veraport, CrossEX, AnySign, nProtect, TouchEn, AhnLab, iniLINE, Interezen)이다.
+listener와 그 조상의 명령줄 전체, launchd 라벨, 서비스 실행 파일 경로 중 하나에 대소문자 구분 없이 포함되면 맞는 것으로 본다.
+명령줄의 첫 칸만 보면 `/Library/Application Support/…`처럼 공백이 있는 경로가 잘려 맞지 않는다(2026-11-19 사용자 Mac에서 발견).
 사용자는 항목을 "개발 서버로 고정"하거나 숨길 수 있다(Phase 2).
 
 ### 보호 이유
@@ -198,7 +200,8 @@ launchd 서비스와 앱 자체는 프로젝트를 표시하지 않는다. root 
 (`/opt/homebrew/var` 등)는 Homebrew 저장소 안이라 프로젝트로 잡으면 틀린다.
 
 항목 제목은 brew 서비스면 포뮬러, 그 밖의 launchd 서비스면 라벨, 앱이면 앱 이름, 나머지는 프로젝트 이름이고 없으면
-listener 실행 파일 이름이다. 항목은 분류 순서(개발 서버, 서비스, 개발 도구, 앱, 시스템)와 가장 작은 포트 순으로 정렬한다.
+listener 실행 파일 이름이다. 단 dev-tool 분류는 listener 실행 파일 이름을 제목으로 하고 프로젝트는 따로 표시한다
+(예: 프로젝트 폴더에서 실행한 코딩 도구가 그 프로젝트 이름으로 보이지 않게). 항목은 분류 순서(개발 서버, 서비스, 개발 도구, 앱, 시스템)와 가장 작은 포트 순으로 정렬한다.
 
 ## 멈추기
 
@@ -320,11 +323,16 @@ portwatch                              3초 전 갱신
   근거(2026-11-18 조사): 표준 macOS 실행기는 분당 약 $0.062로 Linux(약 $0.006)의 10배 정도다. 무료 한도는 자료마다 달라 확인하지 못했다.
   Phase 0 실측: 캐시 없는 macOS 작업 전체가 약 1분 45초였다(run 44276588647). 코드가 커지면 다시 잰다.
   사용자가 비용 기준을 바꾸면 이 결정을 다시 연다. 검증: Phase 0 CI 실행 기록.
-- [ ] DC-11: 사용자 서비스 `launchctl print gui/<uid>`의 형식이 system과 같은지. 2026-11-18 macOS 15.8.2 CI 실행기에서
-  `services = { … }` 블록과 `PID 상태<탭>라벨` 줄 형식이 system과 같음을 확인했다(run 44282667243). 실제 brew 사용자 서비스가
-  `launchd-brew`(user)로 판별되는지 사용자 Mac에서 본 뒤 닫는다.
+- [x] DC-11: 사용자 서비스 목록 `launchctl print gui/<uid>`는 system과 같은 형식이고 같은 파서로 읽는다.
+  근거: 2026-11-18 macOS 15.8.2 CI 실행기(run 44282667243)와 2026-11-19 사용자 Mac에서 `services = { … }` 블록과
+  `PID 상태<탭>라벨` 줄 형식이 같았다. 상태 칸에는 `-` 말고 `(pe)` 같은 값도 온다. 사용자 Mac에서 사용자 도메인 LaunchAgent 3개가
+  `launchd-other`(user)로 판별됐다. brew 사용자 서비스는 같은 경로(사용자 목록 → 서비스 상세 → brew 실행 경로)로 판별하며
+  실제 사례는 M-02(Phase 7)에서 본다.
 - [ ] DC-12: 분류 규칙(임시 포트 범위, 보안 프로그램 기본 목록, 실행 파일 경로 규칙). Phase 1에서 위 "분류" 절대로 구현하고
-  합성 자료로 검증했다. 사용자 Mac의 `portwatch-probe` 결과로 잡음이 기본 화면에 남지 않는지 확인한 뒤 닫는다.
+  합성 자료로 검증했다. 2026-11-19 사용자 Mac 1차 결과: root nginx·터미널 서버·launchd 소켓·system 도메인 보안 서비스는 맞았고,
+  세 가지를 고쳤다. 공백 있는 경로의 보안 프로그램이 서비스로 보임(명령줄 전체·라벨·실행 경로로 비교), 기본 목록에 없던 보안 제조사
+  (AhnLab 등 추가), `/`에서 도는 분리 실행 데몬이 개발 서버로 보임(프로젝트 없는 `detached`는 dev-tool).
+  고친 빌드로 사용자 Mac에서 잡음이 기본 화면에 남지 않는지 다시 본 뒤 닫는다.
 - [ ] DC-13: brew가 아닌 launchd 서비스를 멈출 수 있게 할지와 범위. 제안: `/Library`·`~/Library` 아래 사용자가 설치한
   plist만 허용하고 Apple 서비스는 막는다. Phase 3.
 - [ ] DC-14: Docker Desktop(또는 OrbStack·colima)에서 포트를 여는 프로세스 형식과 컨테이너 연결 방법. Phase 3에서 사용자 Mac으로 확인한다.

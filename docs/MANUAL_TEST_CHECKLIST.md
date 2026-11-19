@@ -53,7 +53,7 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 - [ ] 상세에 master PID, worker, 라벨, plist 경로, 실행 파일이 보인다.
 - [ ] 시험 뒤 위의 정리 절차를 실행한다.
 
-통과: nginx가 root brew 서비스로 정확히 표시된다. 상태: 미실행.
+통과: nginx가 root brew 서비스로 정확히 표시된다. 상태: 탐지는 2026-11-19 사용자 Mac에서 `portwatch-probe`로 확인(한 항목, root, master·worker). 화면 표시는 Phase 2 이후.
 
 ### M-02 — 사용자 brew 서비스 탐지
 
@@ -73,7 +73,7 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 - [ ] 세 서버가 개발 서버 분류에 각각 보인다. 프로젝트 이름, 포트, 실행 명령이 맞다.
 - [ ] 감시 도구 아래 서버는 감시 도구와 함께 한 항목으로 묶인다.
 
-통과: 포트만 다른 서버들이 프로젝트별로 구분된다. 상태: 미실행.
+통과: 포트만 다른 서버들이 프로젝트별로 구분된다. 상태: 일부 확인. 2026-11-19 probe로 터미널 서버 1개(모노레포 하위 패키지 이름, 하위 프로세스 묶음)를 확인했다. 서버 여러 개와 감시 도구 경우는 미실행.
 
 ### M-04 — 잡음 분류
 

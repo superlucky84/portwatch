@@ -17,6 +17,7 @@ const NGINX: &str = include_str!("fixtures/mac-15/service-system-sh.brew.nginx.t
 const REDIS: &str = include_str!("fixtures/mac-15/service-gui-homebrew.mxcl.redis.txt");
 const AGENTD: &str = include_str!("fixtures/mac-15/service-system-com.vendor.agentd.txt");
 const KDC: &str = include_str!("fixtures/mac-15/service-system-com.apple.Kerberos.kdc.txt");
+const CROSSEX: &str = include_str!("fixtures/mac-15/service-gui-kr.example.crossex-service.txt");
 const LSOF: &str = include_str!("fixtures/mac-15/lsof-cwd.txt");
 
 fn target(domain: LaunchdDomain, label: &str) -> ServiceTarget {
@@ -64,6 +65,10 @@ fn snapshot() -> Snapshot {
             target(LaunchdDomain::System, "com.apple.Kerberos.kdc"),
             parse::launchctl_detail(KDC),
         ),
+        (
+            target(LaunchdDomain::User, "kr.example.crossex-service"),
+            parse::launchctl_detail(CROSSEX),
+        ),
     ]);
     facts.cwd = parse::lsof_cwd(LSOF);
     let project = |name: &str, path: &str| Project {
@@ -109,11 +114,12 @@ fn lookups_ask_only_for_launchd_details_and_own_working_folders() {
             target(LaunchdDomain::System, "com.vendor.agentd"),
             target(LaunchdDomain::System, "sh.brew.nginx"),
             target(LaunchdDomain::User, "homebrew.mxcl.redis"),
+            target(LaunchdDomain::User, "kr.example.crossex-service"),
         ]
     );
     assert_eq!(
         lookups.cwd_pids,
-        vec![2100, 2102, 2200, 2202, 2300, 2400, 2500, 2601]
+        vec![2100, 2102, 2200, 2202, 2300, 2400, 2500, 2601, 2700]
     );
 }
 
@@ -220,7 +226,11 @@ fn f04_noise_is_folded_and_protected() {
 
     let tool = by_port(&snapshot, 53733);
     assert_eq!(tool.category, Category::DevTool);
-    assert_eq!(tool.title, "assistant-cli");
+    assert_eq!(
+        tool.title, "assistant-cli",
+        "도구는 프로젝트 이름이 아니라 도구 이름"
+    );
+    assert_eq!(tool.project.as_ref().unwrap().name, "api-server");
 
     let player = by_port(&snapshot, 57621);
     assert_eq!(player.manager.kind, ManagerKind::App);
@@ -261,12 +271,46 @@ fn entries_are_sorted_by_category_then_port() {
             (Category::DevServer, "Python"),
             (Category::Service, "redis"),
             (Category::Service, "nginx"),
+            (Category::DevTool, "sessiond"),
             (Category::DevTool, "assistant-cli"),
             (Category::App, "Player"),
             (Category::System, "launchd"),
             (Category::System, "com.apple.Kerberos.kdc"),
             (Category::System, "veraport"),
             (Category::System, "com.vendor.agentd"),
+            (Category::System, "kr.example.crossex-service"),
         ]
     );
+}
+
+/// 2026-11-19 사용자 Mac 1차 결과에서 나온 경우를 합성 자료로 재현한다(DC-12).
+#[test]
+fn security_agent_with_spaces_in_its_path_is_system() {
+    let snapshot = snapshot();
+    let agent = by_port(&snapshot, 34581);
+    assert_eq!(agent.manager.kind, ManagerKind::LaunchdOther);
+    assert_eq!(agent.manager.domain.as_deref(), Some("user"));
+    assert_eq!(
+        agent.category,
+        Category::System,
+        "경로 전체·라벨로 보안 프로그램을 맞춘다"
+    );
+    assert_eq!(
+        agent.processes.iter().map(|p| p.pid).collect::<Vec<_>>(),
+        [610, 611]
+    );
+    assert_eq!(
+        agent.protection.as_ref().unwrap().reason,
+        "시스템·보안 프로그램입니다."
+    );
+}
+
+#[test]
+fn detached_daemon_outside_a_project_is_a_dev_tool() {
+    let snapshot = snapshot();
+    let daemon = by_port(&snapshot, 2269);
+    assert_eq!(daemon.manager.kind, ManagerKind::Detached);
+    assert_eq!(daemon.category, Category::DevTool);
+    assert_eq!(daemon.title, "sessiond");
+    assert_eq!(daemon.project, None);
 }
