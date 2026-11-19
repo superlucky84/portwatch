@@ -12,6 +12,7 @@
   --pinned-fg: #0b4aa2;
   --warning-bg: #fff4d6;
   --warning-fg: #7a5400;
+  --danger-fg: #b3261e;
   color-scheme: light dark;
 }
 
@@ -30,6 +31,7 @@
     --pinned-fg: #a9cbff;
     --warning-bg: #3d3216;
     --warning-fg: #f5d27a;
+    --danger-fg: #ff8a80;
   }
 }
 
@@ -276,6 +278,35 @@ input:focus-visible {
 }
 
 .action {
+  font-size: 12px;
+}
+
+.action[data-kind='danger'] {
+  color: var(--danger-fg);
+}
+
+.stop-box {
+  margin: 6px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.stop-message {
+  margin: 0;
+}
+
+.stop-command {
+  margin: 4px 0 0;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.stop-result {
+  margin: 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
   font-size: 12px;
 }
 

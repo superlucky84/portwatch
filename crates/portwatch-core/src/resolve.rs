@@ -2,10 +2,11 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::parse::{LaunchdJob, ProcessRow, ServiceDetail};
+use crate::parse::{DockerContainer, LaunchdJob, ProcessRow, ServiceDetail};
 use crate::snapshot::{
     Category, Entry, Listener, Manager, ManagerKind, ProcessInfo, Project, Protection, Snapshot,
 };
+use crate::stop::{self, DockerHint, PlanHints};
 
 /// launchd 도메인.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -53,6 +54,10 @@ pub struct Facts {
     pub cwd: HashMap<u32, String>,
     /// 작업 폴더 → 프로젝트. 수집기가 파일을 확인해 채운다.
     pub projects: HashMap<String, Project>,
+    /// `docker ps`로 읽은 실행 중인 컨테이너.
+    pub containers: Vec<DockerContainer>,
+    /// 수집하는 사용자의 홈 폴더. Docker Desktop 소켓 경로에 쓴다.
+    pub home: String,
     pub self_pid: u32,
     pub current_uid: u32,
     /// 보안 프로그램 이름 조각(소문자).
@@ -65,6 +70,8 @@ pub struct Facts {
 pub struct Lookups {
     pub services: Vec<ServiceTarget>,
     pub cwd_pids: Vec<u32>,
+    /// Docker Desktop 포트 전달 프로세스가 포트를 열었을 때 그 앱의 docker CLI 경로.
+    pub docker_cli: Option<String>,
 }
 
 /// 기본 보안 프로그램 이름 조각. 널리 알려진 국내 금융·인증 보안 프로그램이다.
@@ -90,12 +97,16 @@ const SHELLS: &[&str] = &[
     "zsh", "bash", "sh", "fish", "tcsh", "csh", "ksh", "dash", "nu", "pwsh", "xonsh",
 ];
 const SYSTEM_PATHS: &[&str] = &["/System/", "/usr/libexec/", "/usr/sbin/", "/sbin/"];
+/// Docker Desktop의 포트 전달 프로세스(DC-14).
+const DOCKER_BACKEND: &str = "/Docker.app/Contents/MacOS/com.docker.backend";
+const DOCKER_CLI: &str = "/Docker.app/Contents/Resources/bin/docker";
 const MAX_TREE: usize = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Kind {
     LaunchdSocket,
     Launchd,
+    Docker,
     Pm2,
     Terminal,
     App,
@@ -108,6 +119,7 @@ impl Kind {
         match self {
             Self::LaunchdSocket => "launchd-socket",
             Self::Launchd => "launchd",
+            Self::Docker => "docker",
             Self::Pm2 => "pm2",
             Self::Terminal => "terminal",
             Self::App => "app",
@@ -126,6 +138,8 @@ struct Group {
     app_name: Option<String>,
     /// 최상위가 앱 프로세스 자체인지.
     app_top: bool,
+    /// Docker 컨테이너(ID, 이름).
+    container: Option<(String, String)>,
     listeners: Vec<Listener>,
 }
 
@@ -230,6 +244,15 @@ fn app_name(command: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.to_owned())
 }
 
+/// Docker Desktop 포트 전달 프로세스면 그 앱의 docker CLI 경로.
+fn docker_cli(row: &ProcessRow) -> Option<String> {
+    let start = row.command.find(DOCKER_BACKEND)?;
+    let prefix = &row.command[..start];
+    let rest = &row.command[start + DOCKER_BACKEND.len()..];
+    (prefix.starts_with('/') && (rest.is_empty() || rest.starts_with(' ')))
+        .then(|| format!("{prefix}{DOCKER_CLI}"))
+}
+
 fn is_system_path(path: &str) -> bool {
     SYSTEM_PATHS.iter().any(|prefix| path.starts_with(prefix))
 }
@@ -255,13 +278,24 @@ fn brew_formula(executable: &str) -> Option<String> {
     None
 }
 
-fn classify_listener(index: &Index, listener: &Listener) -> Group {
+/// 최상위(`chain[top]`)가 listener와 다른 프로세스 그룹이면, 같은 그룹인 가장 위 조상으로 내려온다.
+/// 코딩 도구가 자기 셸에서 띄운 서버를 멈출 때 도구까지 멈추지 않게 하기 위해서다(docs/DESIGN.md "판별 순서").
+fn same_group_top(chain: &[&ProcessRow], top: usize) -> u32 {
+    let pgid = chain[0].pgid;
+    chain[..=top]
+        .iter()
+        .rposition(|row| row.pgid == pgid)
+        .map_or(chain[0].pid, |i| chain[i].pid)
+}
+
+fn classify_listener(index: &Index, facts: &Facts, listener: &Listener) -> Group {
     let group = |kind, top_pid| Group {
         kind,
         top_pid,
         service: None,
         app_name: None,
         app_top: false,
+        container: None,
         listeners: vec![listener.clone()],
     };
 
@@ -286,6 +320,18 @@ fn classify_listener(index: &Index, listener: &Listener) -> Group {
         }
     }
 
+    if chain.iter().any(|row| docker_cli(row).is_some()) {
+        if let Some(container) = facts
+            .containers
+            .iter()
+            .find(|c| c.host_ports.contains(&listener.port))
+        {
+            let mut found = group(Kind::Docker, listener.pid);
+            found.container = Some((container.id.clone(), container.name.clone()));
+            return found;
+        }
+    }
+
     if let Some(i) = chain.iter().position(|row| is_pm2_daemon(row)) {
         let top = if i > 0 { chain[i - 1] } else { chain[0] };
         return group(Kind::Pm2, top.pid);
@@ -295,8 +341,7 @@ fn classify_listener(index: &Index, listener: &Listener) -> Group {
         while i > 0 && is_shell(chain[i - 1]) {
             i -= 1;
         }
-        let top = if i > 0 { chain[i - 1] } else { chain[0] };
-        return group(Kind::Terminal, top.pid);
+        return group(Kind::Terminal, same_group_top(&chain, i.saturating_sub(1)));
     }
 
     if let Some(highest) = chain.iter().rposition(|row| is_app_process(row)) {
@@ -310,26 +355,26 @@ fn classify_listener(index: &Index, listener: &Listener) -> Group {
                 .iter()
                 .position(|row| is_app_process(row))
                 .unwrap_or(highest);
-            group(Kind::App, chain[lowest.saturating_sub(1)].pid)
+            group(Kind::App, same_group_top(&chain, lowest.saturating_sub(1)))
         };
         found.app_name = name;
         return found;
     }
 
+    let root_index = chain.len() - 1;
     if root.ppid == 1 {
-        return group(Kind::Detached, root.pid);
+        return group(Kind::Detached, same_group_top(&chain, root_index));
     }
-    group(Kind::Unknown, root.pid)
+    group(Kind::Unknown, same_group_top(&chain, root_index))
 }
 
 fn analyze(index: &Index, facts: &Facts) -> Vec<Group> {
     let mut groups: Vec<Group> = Vec::new();
     for listener in &facts.listeners {
-        let found = classify_listener(index, listener);
-        match groups
-            .iter_mut()
-            .find(|g| g.kind == found.kind && g.top_pid == found.top_pid)
-        {
+        let found = classify_listener(index, facts, listener);
+        match groups.iter_mut().find(|g| {
+            g.kind == found.kind && g.top_pid == found.top_pid && g.container == found.container
+        }) {
             Some(existing) => existing.listeners.push(listener.clone()),
             None => groups.push(found),
         }
@@ -340,7 +385,10 @@ fn analyze(index: &Index, facts: &Facts) -> Vec<Group> {
 /// 프로젝트를 표시할 묶음인지. launchd 서비스와 앱 자체는 작업 폴더가 프로젝트가 아니다
 /// (예: brew 서비스의 작업 폴더 `/opt/homebrew`는 Homebrew 저장소다).
 fn wants_project(group: &Group) -> bool {
-    !matches!(group.kind, Kind::LaunchdSocket | Kind::Launchd) && !group.app_top
+    !matches!(
+        group.kind,
+        Kind::LaunchdSocket | Kind::Launchd | Kind::Docker
+    ) && !group.app_top
 }
 
 /// 첫 수집 결과로 추가 조회 대상을 정한다.
@@ -367,7 +415,17 @@ pub fn plan_lookups(facts: &Facts) -> Lookups {
     cwd_pids.sort_unstable();
     cwd_pids.dedup();
 
-    Lookups { services, cwd_pids }
+    let docker_cli = facts
+        .listeners
+        .iter()
+        .flat_map(|l| index.chain(l.pid))
+        .find_map(docker_cli);
+
+    Lookups {
+        services,
+        cwd_pids,
+        docker_cli,
+    }
 }
 
 /// 수집한 사실로 스냅샷을 만든다.
@@ -459,7 +517,8 @@ fn make_entry(index: &Index, facts: &Facts, group: Group) -> Entry {
     let protection = protection(facts, &group, &manager, category, top);
 
     // launchd(PID 1) 아래는 모든 프로세스라서 소켓 항목은 PID 1만 둔다.
-    let tree = if group.kind == Kind::LaunchdSocket {
+    // Docker 포트 전달 프로세스 아래는 컨테이너와 상관없는 Docker 프로세스라서 그 하나만 둔다.
+    let tree = if matches!(group.kind, Kind::LaunchdSocket | Kind::Docker) {
         top.into_iter().collect()
     } else {
         index.tree(group.top_pid)
@@ -472,13 +531,32 @@ fn make_entry(index: &Index, facts: &Facts, group: Group) -> Entry {
     let mut listeners = group.listeners;
     listeners.sort_by_key(|l| (l.port, l.address.clone()));
 
-    Entry {
-        id: format!(
+    // 컨테이너는 같은 포트 전달 프로세스를 함께 쓰므로 컨테이너 ID로 구분한다.
+    let id = match &group.container {
+        Some((container_id, _)) => format!("docker:{container_id}"),
+        None => format!(
             "{}:{}:{}",
             group.kind.id(),
             group.top_pid,
             top.map(|row| row.started_at.as_str()).unwrap_or("")
         ),
+    };
+    let docker = group.container.as_ref().and_then(|(container_id, _)| {
+        Some(DockerHint {
+            cli: top.and_then(docker_cli)?,
+            socket: stop::docker_socket(&facts.home),
+            container_id: container_id.clone(),
+        })
+    });
+    let hints = PlanHints {
+        service_executable: detail
+            .and_then(ServiceDetail::executable)
+            .map(str::to_owned),
+        docker,
+    };
+
+    let mut entry = Entry {
+        id,
         key,
         title,
         category,
@@ -488,9 +566,12 @@ fn make_entry(index: &Index, facts: &Facts, group: Group) -> Entry {
         project,
         domains: Vec::new(),
         protection,
+        stop_plan: None,
         hidden: false,
         pinned: false,
-    }
+    };
+    entry.stop_plan = stop::plan(&entry, &hints);
+    entry
 }
 
 /// 다시 실행해도 같은 항목 기준(docs/DESIGN.md "항목 기준(key)").
@@ -504,6 +585,9 @@ fn entry_key(
 ) -> String {
     if group.kind == Kind::LaunchdSocket {
         return "launchd-socket".to_owned();
+    }
+    if let Some((_, name)) = &group.container {
+        return format!("docker:{name}");
     }
     if let Some(label) = &manager.label {
         return format!("launchd:{label}");
@@ -547,6 +631,7 @@ fn manager(group: &Group, top: Option<&ProcessRow>, detail: Option<&ServiceDetai
         Kind::LaunchdSocket => ManagerKind::LaunchdSocket,
         Kind::Launchd if formula.is_some() => ManagerKind::LaunchdBrew,
         Kind::Launchd => ManagerKind::LaunchdOther,
+        Kind::Docker => ManagerKind::Docker,
         Kind::Pm2 => ManagerKind::Pm2,
         Kind::Terminal => ManagerKind::Terminal,
         Kind::App => ManagerKind::App,
@@ -561,7 +646,7 @@ fn manager(group: &Group, top: Option<&ProcessRow>, detail: Option<&ServiceDetai
             .map(|target| target.domain.as_str().to_owned()),
         label: group.service.as_ref().map(|target| target.label.clone()),
         formula,
-        container: None,
+        container: group.container.as_ref().map(|(_, name)| name.clone()),
         app_name: group.app_name.clone(),
         runs_as_root: top.map_or(group.top_pid == 1, |row| row.uid == 0),
     }
@@ -645,6 +730,7 @@ fn title(
         ManagerKind::LaunchdBrew => manager.formula.clone().unwrap_or_else(fallback),
         ManagerKind::LaunchdOther => manager.label.clone().unwrap_or_else(fallback),
         ManagerKind::LaunchdSocket => "launchd".to_owned(),
+        ManagerKind::Docker => manager.container.clone().unwrap_or_else(fallback),
         ManagerKind::App if group.app_top => manager.app_name.clone().unwrap_or_else(fallback),
         // 도구는 작업 중인 프로젝트가 아니라 도구 이름으로 보여 준다.
         _ if category == Category::DevTool => fallback(),
@@ -670,7 +756,9 @@ fn protection(
     } else if top.is_some_and(|row| row.uid == 0) && manager.kind != ManagerKind::LaunchdBrew {
         "root로 실행 중인 프로세스입니다."
     } else if manager.kind == ManagerKind::LaunchdOther {
-        "brew가 아닌 launchd 서비스는 아직 멈추지 않습니다(DC-13)."
+        "brew가 아닌 launchd 서비스는 멈추지 않습니다(DC-13)."
+    } else if manager.kind == ManagerKind::Pm2 {
+        "pm2 항목은 portwatch에서 멈추지 않습니다. 터미널에서 pm2 stop으로 멈추세요(DC-22)."
     } else {
         return None;
     };
@@ -736,6 +824,7 @@ mod tests {
     fn shell_inside_a_script_does_not_move_the_top() {
         let facts = Facts {
             listeners: vec![listen(13, 5173, "*")],
+            // 셸은 작업(npm 아래 전부)을 한 프로세스 그룹으로 만든다.
             processes: vec![
                 row(
                     10,
@@ -745,13 +834,19 @@ mod tests {
                 ),
                 row(11, 10, 501, "-zsh"),
                 row(12, 11, 501, "npm run dev"),
-                row(14, 12, 501, "sh -c vite"),
-                row(
-                    13,
-                    14,
-                    501,
-                    "node /Users/dev/work/web/node_modules/.bin/vite",
-                ),
+                ProcessRow {
+                    pgid: 12,
+                    ..row(14, 12, 501, "sh -c vite")
+                },
+                ProcessRow {
+                    pgid: 12,
+                    ..row(
+                        13,
+                        14,
+                        501,
+                        "node /Users/dev/work/web/node_modules/.bin/vite",
+                    )
+                },
             ],
             user_jobs: vec![LaunchdJob {
                 pid: 10,

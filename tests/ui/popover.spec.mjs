@@ -155,6 +155,108 @@ test('설정 화면에서 주기·자동 실행·보안 목록·숨긴 항목을
   await expect(page.locator('#list')).toBeVisible();
 });
 
+test('멈추기는 확인 칸을 거쳐 항목 id만 보낸다', async ({ page }) => {
+  await open(page);
+  const web = entry(page, 'project:/Users/dev/work/shop-web');
+  await web.locator('.entry-head').click();
+  await web.getByRole('button', { name: '멈추기' }).click();
+  const box = web.locator('.stop-box');
+  await expect(box).toContainText('kill -TERM -2100');
+  await expect(box).toContainText('일반 권한');
+  await expect(box).toContainText('터미널');
+  await box.getByRole('button', { name: '취소' }).click();
+  await expect(web.locator('.stop-box')).toHaveCount(0);
+
+  await web.getByRole('button', { name: '멈추기' }).click();
+  await web.locator('.stop-box').getByRole('button', { name: '멈추기' }).click();
+  await expect(web.locator('.stop-box')).toContainText('멈췄습니다.');
+  await expect(page.locator('#stop-result')).toHaveText('shop-web: 멈췄습니다.');
+
+  const recorded = (await calls(page)).filter(([command]) => command !== 'get_state');
+  expect(recorded).toEqual([['stop_entry', { id: 'terminal:5173:Wed Nov 18 09:00:00 2026' }]]);
+});
+
+test('root 서비스는 관리자 권한을 알리고 취소 결과를 보여 준다', async ({ page }) => {
+  const state = uiState({
+    stopReplies: { stop_entry: { outcome: 'cancelled', message: '취소됨', command: null, canForce: false } },
+  });
+  await open(page, state);
+  const nginx = entry(page, 'launchd:sh.brew.nginx');
+  await nginx.locator('.entry-head').click();
+  await nginx.getByRole('button', { name: '멈추기' }).click();
+  await expect(nginx.locator('.stop-box')).toContainText('관리자 비밀번호가 필요합니다');
+  await expect(nginx.locator('.stop-box')).toContainText('brew services stop nginx');
+  await nginx.locator('.stop-box').getByRole('button', { name: '멈추기' }).click();
+  await expect(page.locator('#stop-result')).toHaveText('nginx: 취소됨');
+  await nginx.getByRole('button', { name: '닫기' }).click();
+  await expect(nginx.getByRole('button', { name: '멈추기' })).toBeVisible();
+});
+
+test('아직 실행 중이면 한 번 더 확인하고 강제 종료한다', async ({ page }) => {
+  const state = uiState({
+    stopReplies: {
+      stop_entry: { outcome: 'still-running', message: '아직 실행 중입니다.', command: null, canForce: true },
+    },
+  });
+  await open(page, state);
+  const web = entry(page, 'project:/Users/dev/work/shop-web');
+  await web.locator('.entry-head').click();
+  await web.getByRole('button', { name: '멈추기' }).click();
+  await web.locator('.stop-box').getByRole('button', { name: '멈추기' }).click();
+  await expect(web.locator('.stop-box')).toContainText('아직 실행 중입니다.');
+  await web.getByRole('button', { name: '강제 종료' }).click();
+  await expect(web.locator('.stop-box')).toContainText('SIGKILL');
+  await web.locator('.stop-box').getByRole('button', { name: '강제 종료' }).click();
+  await expect(web.locator('.stop-box')).toContainText('멈췄습니다.');
+  const commands = (await calls(page)).map(([command]) => command);
+  expect(commands).toEqual(['get_state', 'stop_entry', 'force_stop_entry']);
+});
+
+test('실패하면 터미널용 명령을 복사할 수 있다', async ({ page }) => {
+  const state = uiState({
+    stopReplies: {
+      stop_entry: {
+        outcome: 'failed',
+        message: '멈추지 못했습니다. Error: permission denied',
+        command: 'sudo /opt/homebrew/bin/brew services stop nginx',
+        canForce: false,
+      },
+    },
+  });
+  await open(page, state);
+  const nginx = entry(page, 'launchd:sh.brew.nginx');
+  await nginx.locator('.entry-head').click();
+  await nginx.getByRole('button', { name: '멈추기' }).click();
+  await nginx.locator('.stop-box').getByRole('button', { name: '멈추기' }).click();
+  await expect(nginx.locator('.stop-command')).toHaveText('sudo /opt/homebrew/bin/brew services stop nginx');
+  await expect(nginx.getByRole('button', { name: '강제 종료' })).toHaveCount(0);
+  await nginx.getByRole('button', { name: '명령 복사' }).click();
+  await expect(page.locator('#status')).toHaveText('명령을 복사했습니다.');
+  const recorded = (await calls(page)).filter(([command]) => command === 'copy_text');
+  expect(recorded).toEqual([['copy_text', { text: 'sudo /opt/homebrew/bin/brew services stop nginx' }]]);
+});
+
+test('셸이 거절하면 그 이유를 결과로 보인다', async ({ page }) => {
+  await open(page, uiState({ stopReplies: { stop_entry: { error: '다른 항목을 멈추는 중입니다.' } } }));
+  const web = entry(page, 'project:/Users/dev/work/shop-web');
+  await web.locator('.entry-head').click();
+  await web.getByRole('button', { name: '멈추기' }).click();
+  await web.locator('.stop-box').getByRole('button', { name: '멈추기' }).click();
+  await expect(web.locator('.stop-message')).toContainText('다른 항목을 멈추는 중입니다.');
+  await expect(page.locator('#stop-result')).toContainText('다른 항목을 멈추는 중입니다.');
+});
+
+test('계획이 없거나 보호된 항목에는 멈추기 버튼이 없다', async ({ page }) => {
+  await open(page);
+  await group(page, 'system').locator('.group-head').click();
+  const launchd = entry(page, 'launchd-socket');
+  await launchd.locator('.entry-head').click();
+  await expect(launchd.getByRole('button', { name: '멈추기' })).toHaveCount(0);
+  const api = entry(page, 'project:/Users/dev/work/api');
+  await api.locator('.entry-head').click();
+  await expect(api.getByRole('button', { name: '멈추기' })).toHaveCount(0);
+});
+
 test('Esc로 창을 닫는다', async ({ page }) => {
   await open(page);
   await page.keyboard.press('Escape');

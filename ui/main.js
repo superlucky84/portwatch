@@ -21,6 +21,7 @@ const listElement = $('list');
 const settingsElement = $('settings');
 const warningsElement = $('warnings');
 const statusElement = $('status');
+const stopResultElement = $('stop-result');
 
 // 웹뷰 저장소는 막혀 있을 수 있으므로 실패를 무시한다.
 const saved = {
@@ -49,6 +50,8 @@ const ui = {
   settings: null,
   choices: { open: [], closed: [] },
   defaultSecurityNames: [],
+  // 멈추기 진행 상태: { key, id, title, phase: confirm | running | result | force-confirm, report }.
+  stop: null,
 };
 
 function element(tag, className, text) {
@@ -132,7 +135,15 @@ function buildDetail(entry) {
   }
   detail.append(processes);
 
+  const stop = ui.stop?.key === entry.key ? ui.stop : null;
+  if (stop) {
+    detail.append(buildStopBox(entry, stop));
+  }
+
   const actions = element('div', 'buttons');
+  if (entry.stopPlan && !entry.protection && !stop) {
+    actions.append(actionButton('멈추기', 'stop-ask', entry.key, { id: entry.id }));
+  }
   const url = entryUrl(entry);
   if (url) {
     actions.append(
@@ -150,6 +161,59 @@ function buildDetail(entry) {
   );
   detail.append(actions);
   return detail;
+}
+
+// 멈추기 확인·진행·결과 칸(docs/DESIGN.md "화면").
+function buildStopBox(entry, stop) {
+  const box = element('div', 'stop-box');
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-label', '멈추기');
+  const buttons = element('div', 'buttons');
+  switch (stop.phase) {
+    case 'confirm': {
+      const plan = entry.stopPlan;
+      box.append(
+        detailRow('대상', entry.title),
+        detailRow('관리', managerLabel(entry)),
+        detailRow('명령', plan?.command ?? ''),
+        detailRow('권한', plan?.admin ? '관리자 비밀번호가 필요합니다' : '일반 권한'),
+      );
+      buttons.append(
+        actionButton('멈추기', 'stop-run', entry.key, { kind: 'danger' }),
+        actionButton('취소', 'stop-cancel', entry.key),
+      );
+      break;
+    }
+    case 'running':
+      box.append(element('p', 'stop-message', '멈추는 중…'));
+      break;
+    case 'force-confirm':
+      box.append(
+        element('p', 'stop-message', 'SIGKILL로 강제 종료합니다. 저장하지 않은 내용이 사라질 수 있습니다.'),
+      );
+      buttons.append(
+        actionButton('강제 종료', 'force-run', entry.key, { kind: 'danger' }),
+        actionButton('취소', 'stop-cancel', entry.key),
+      );
+      break;
+    default: {
+      const report = stop.report;
+      box.append(element('p', 'stop-message', report.message));
+      if (report.command) {
+        box.append(element('p', 'stop-command', report.command));
+        buttons.append(actionButton('명령 복사', 'copy-command', entry.key, { command: report.command }));
+      }
+      if (report.canForce) {
+        buttons.append(actionButton('강제 종료', 'force-ask', entry.key, { kind: 'danger' }));
+      }
+      buttons.append(actionButton('닫기', 'stop-cancel', entry.key));
+      break;
+    }
+  }
+  if (buttons.childElementCount > 0) {
+    box.append(buttons);
+  }
+  return box;
 }
 
 function buildEntry(entry) {
@@ -225,6 +289,28 @@ function renderList() {
   listElement.scrollTop = scrollTop;
 }
 
+function showStopResult(stop) {
+  stopResultElement.textContent = stop ? `${stop.title}: ${stop.report.message}` : '';
+  stopResultElement.hidden = !stop;
+}
+
+// 멈추기 명령을 부르고 결과를 그 항목 자리와 목록 위 줄에 남긴다. 화면은 항목 id만 보낸다.
+async function runStop(command) {
+  const stop = ui.stop;
+  ui.stop = { ...stop, phase: 'running' };
+  showStopResult(null);
+  renderList();
+  let report;
+  try {
+    report = await call(command, { id: stop.id });
+  } catch (error) {
+    report = { outcome: 'failed', message: String(error), command: null, canForce: false };
+  }
+  ui.stop = { ...stop, phase: 'result', report };
+  showStopResult(ui.stop);
+  renderList();
+}
+
 function renderWarnings(warnings) {
   warningsElement.replaceChildren(...warnings.map((warning) => element('li', '', warning)));
   warningsElement.hidden = warnings.length === 0;
@@ -276,8 +362,32 @@ async function handleListClick(event) {
   if (!button) {
     return;
   }
-  const { action, key, url } = button.dataset;
+  const { action, key, url, id, command } = button.dataset;
   switch (action) {
+    case 'stop-ask': {
+      const entry = ui.snapshot.entries.find((candidate) => candidate.id === id);
+      ui.stop = { key, id, title: entry?.title ?? key, phase: 'confirm', report: null };
+      renderList();
+      break;
+    }
+    case 'stop-cancel':
+      ui.stop = null;
+      renderList();
+      break;
+    case 'stop-run':
+      await runStop('stop_entry');
+      break;
+    case 'force-ask':
+      ui.stop = { ...ui.stop, phase: 'force-confirm' };
+      renderList();
+      break;
+    case 'force-run':
+      await runStop('force_stop_entry');
+      break;
+    case 'copy-command':
+      await call('copy_text', { text: command });
+      showStatus('명령을 복사했습니다.');
+      break;
     case 'toggle-entry':
       toggleEntry(button);
       break;

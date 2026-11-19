@@ -5,6 +5,9 @@
   610     1   610   501 ??       dev      Mon Nov 16 08:01:05 2026 /Library/Application Support/Example/CrossEX/CrossEXService
   611   610   610   501 ??       dev      Mon Nov 16 08:01:06 2026 /Library/Application Support/Example/CrossEX/CrossEXService -d
   700     1   700   501 ??       dev      Mon Nov 16 08:01:10 2026 /Applications/Player.app/Contents/MacOS/Player
+  800     1   800   501 ??       dev      Mon Nov 16 08:03:00 2026 /Applications/Docker.app/Contents/MacOS/com.docker.backend
+  801   800   800   501 ??       dev      Mon Nov 16 08:03:01 2026 /Applications/Docker.app/Contents/MacOS/com.docker.backend services
+  802   800   800   501 ??       dev      Mon Nov 16 08:03:02 2026 /Applications/Docker.app/Contents/MacOS/com.docker.build
   900     1   900   501 ??       dev      Mon Nov 16 08:02:00 2026 /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal
  1100     1  1100     0 ??       root     Wed Nov 18 09:00:00 2026 nginx: master process /opt/homebrew/opt/nginx/bin/nginx -g daemon off;
  1101  1100  1100    -2 ??       nobody   Wed Nov 18 09:00:00 2026 nginx: worker process
@@ -26,6 +29,11 @@
  2007   900  2007     0 ttys004  root     Wed Nov 18 09:16:00 2026 login -pf dev
  2008  2007  2008   501 ttys004  dev      Wed Nov 18 09:16:00 2026 -zsh
  2400  2008  2400   501 ttys004  dev      Wed Nov 18 09:16:30 2026 /Users/dev/.local/bin/assistant-cli
+ 2009   900  2009     0 ttys005  root     Wed Nov 18 09:16:40 2026 login -pf dev
+ 2010  2009  2010   501 ttys005  dev      Wed Nov 18 09:16:40 2026 -zsh
+ 2800  2010  2800   501 ttys005  dev      Wed Nov 18 09:16:50 2026 /Users/dev/.local/bin/agent-cli
+ 2801  2800  2801   501 ??       dev      Wed Nov 18 09:16:55 2026 /bin/zsh -c npm run dev
+ 2802  2801  2801   501 ??       dev      Wed Nov 18 09:16:56 2026 node /Users/dev/work/admin/node_modules/.bin/next dev
  2500     1  2500   501 ??       dev      Wed Nov 18 09:17:00 2026 node /Users/dev/work/worker/index.js
  2600     1  2600   501 ??       dev      Wed Nov 18 09:18:00 2026 PM2 v5.4.2: God Daemon (/Users/dev/.pm2)
  2601  2600  2601   501 ??       dev      Wed Nov 18 09:18:01 2026 node /Users/dev/work/queue/app.js

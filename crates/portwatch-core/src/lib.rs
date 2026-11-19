@@ -11,6 +11,7 @@ pub mod project;
 pub mod resolve;
 pub mod settings;
 pub mod snapshot;
+pub mod stop;
 
 pub use snapshot::{
     Category, Domain, DomainVia, Entry, Listener, Manager, ManagerKind, ProcessInfo, Project,

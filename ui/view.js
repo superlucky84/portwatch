@@ -84,6 +84,8 @@ export function describeKey(key) {
       return `앱 ${value}`;
     case 'exe':
       return `프로그램 ${value}`;
+    case 'docker':
+      return `컨테이너 ${value}`;
     default:
       return key;
   }

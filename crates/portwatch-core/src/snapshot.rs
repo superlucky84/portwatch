@@ -1,8 +1,8 @@
 //! 스냅샷 계약. docs/DESIGN.md의 "스냅샷 계약" 절과 같은 모양을 유지한다.
-//!
-//! 멈추기 계획 요약(stopPlan)은 Phase 3에서 추가한다.
 
 use serde::{Deserialize, Serialize};
+
+use crate::stop::StopPlan;
 
 /// 수집 한 번의 결과.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,6 +48,9 @@ pub struct Entry {
     pub domains: Vec<Domain>,
     /// 멈추기를 막는 경우 그 이유.
     pub protection: Option<Protection>,
+    /// 멈추기 계획. 보호 항목이나 멈추는 방법이 없는 항목은 없음.
+    #[serde(default)]
+    pub stop_plan: Option<StopPlan>,
     /// 사용자가 숨긴 항목.
     #[serde(default)]
     pub hidden: bool,
@@ -200,6 +203,7 @@ mod tests {
                 tls: true,
             }],
             protection: None,
+            stop_plan: None,
             hidden: false,
             pinned: true,
         };
@@ -211,6 +215,7 @@ mod tests {
         assert_eq!(value["domains"][0]["via"], "nginx");
         assert_eq!(value["key"], "launchd:sh.brew.nginx");
         assert_eq!(value["pinned"], true);
+        assert_eq!(value["stopPlan"], serde_json::Value::Null);
 
         let back: Entry = serde_json::from_value(value).unwrap();
         assert_eq!(back, entry);

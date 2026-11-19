@@ -66,6 +66,8 @@ fn main() {
             commands::set_launch_at_login,
             commands::open_url,
             commands::copy_text,
+            commands::stop_entry,
+            commands::force_stop_entry,
             commands::hide_popover,
             commands::quit_app,
         ])

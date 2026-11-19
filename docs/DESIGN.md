@@ -55,7 +55,7 @@ Phase 0에서 고정한 버전(2026-11-18, 게시 후 4주 안팎 지난 버전�
 | `tauri-plugin-positioner` | 2.4.0 |
 | `tauri-plugin-autostart` | 2.7.0 (Phase 2) |
 | `@playwright/test` | 1.63.0 (Phase 2, 화면 테스트) |
-| 개발 환경 Rust | 1.97.0 |
+| 개발 환경 Rust | 1.97.0 (클라우드 세션), 1.100.0 (사용자 Mac, Phase 3부터) |
 - 화면에 노출하는 명령은 "화면과 갱신" 절의 목록으로 고정한다(멈추기는 Phase 3에서 추가).
   임의 명령을 실행하는 셸 플러그인은 넣지 않는다. 화면이 잘못되거나 변조돼도 정해진 동작 밖으로 나가지 않게 하기 위해서다.
   자동 실행 플러그인도 화면에 권한을 주지 않고 셸 명령 안에서만 부른다.
@@ -88,14 +88,17 @@ Entry            포트를 연 서버 하나 (프로세스 트리의 최상위 �
   project        { name, path } 또는 없음
   domains[]      { name, via, port, tls }   via: hosts | nginx | direct
   protection     멈추기를 막는 이유 (막지 않으면 없음)
-  stopPlan       멈추기 계획 요약 (권한 필요 여부 포함). Phase 3에서 추가
+  stopPlan       멈추기 계획 또는 없음(보호 항목, 멈추는 방법이 없는 항목). Phase 3에서 추가
+    method       { kind: signal, pid, group } | { kind: brew-services, brew, formula, domain } | { kind: docker-stop, docker, socket, containerId }
+    command      확인 창에 보여 줄 명령 (예: brew services stop nginx)
+    admin        관리자 권한이 필요한지
 
 Manager
   kind           launchd-brew | launchd-other | docker | pm2 | terminal | detached | app | launchd-socket | unknown
   domain         system | user (launchd일 때)
   label          launchd 라벨 (예: sh.brew.nginx)
   formula        brew 포뮬러 이름 (예: nginx)
-  container      Docker 컨테이너 이름
+  container      Docker 컨테이너 이름 (Phase 3)
   appName        앱에서 실행한 경우의 앱 이름
   runsAsRoot     최상위 프로세스가 root인지
 ```
@@ -115,7 +118,7 @@ brew는 `/opt/homebrew/bin/brew`와 `/usr/local/bin/brew`를 차례로 찾는다
 | `/bin/launchctl print gui/<내 uid>` | 사용자 서비스의 PID → 라벨 표 | 형식은 CI 실행기에서 확인. 실제 사례는 DC-11 |
 | `/bin/launchctl print <도메인>/<라벨>` | plist 경로·실행 파일·인수·작업 폴더 | 확인된 사실. 서비스 항목에만 실행 |
 | `/usr/sbin/lsof -a -p <PID 목록> -d cwd -Fn` | 내 프로세스의 작업 폴더 | 자기 프로세스만 보인다는 사실 확인 |
-| `docker ps --format '{{json .}}'` | 컨테이너 이름과 포트 연결 | Docker가 있을 때만. 형식은 DC-14 |
+| `<Docker.app>/Contents/Resources/bin/docker --host unix://<홈>/.docker/run/docker.sock ps --no-trunc --format '{{json .}}'` | 컨테이너 ID·이름·포트 연결 | Docker Desktop 포트 전달 프로세스가 포트를 열었을 때만. 형식 확인(DC-14) |
 | `/etc/hosts` 읽기 | 루프백을 가리키는 도메인 | Phase 4 |
 | nginx 설정 읽기 | server_name·listen·proxy_pass | 방식은 DC-15 |
 
@@ -125,6 +128,10 @@ brew는 `/opt/homebrew/bin/brew`와 `/usr/local/bin/brew`를 차례로 찾는다
 수집은 두 번에 나눈다. 먼저 netstat·ps·launchctl 목록 두 개를 함께 실행한다. 코어가 그 결과로 상세가 필요한
 launchd 라벨과 작업 폴더가 필요한 PID를 정하면, 그것만 `launchctl print <도메인>/<라벨>`과 `lsof` 한 번으로 더 읽는다.
 작업 폴더에서 프로젝트를 찾는 파일 확인은 수집기가 하고, `package.json`의 `name`을 읽는 해석은 코어가 한다.
+Docker Desktop의 포트 전달 프로세스가 포트를 열었으면 같은 두 번째 단계에서 `docker ps`를 한 번 실행한다.
+
+`docker`는 포트 전달 프로세스의 앱 경로에서 찾은 CLI를 쓰고, 소켓을 `--host unix://<홈>/.docker/run/docker.sock`으로 고정한다.
+사용자가 Docker context를 원격 호스트로 바꿔 두면 `--host` 없는 명령이 네트워크로 나가기 때문이다(외부 네트워크 금지 정책).
 
 ### netstat 읽기
 
@@ -145,7 +152,11 @@ listener마다 `ps` 정보로 부모를 따라 올라가 조상 목록을 만든
    단 라벨이 `application.`으로 시작하면 서비스가 아니라 앱 실행 기록이므로 건너뛴다(Terminal·VS Code 같은 앱도 표에 있다).
    상세 정보의 실행 파일이 brew 경로(`/opt/homebrew/`, `/usr/local/Cellar/`, `/usr/local/opt/`) 아래면 `launchd-brew`, 아니면 `launchd-other`다.
    포뮬러 이름은 실행 파일 경로의 `opt/<이름>/` 또는 `Cellar/<이름>/`에서 얻는다.
-3. Docker의 포트 전달 프로세스이면 `docker ps`의 포트 연결로 컨테이너를 찾는다(DC-14, Phase 3에서 구현).
+3. listener나 그 조상이 Docker Desktop 포트 전달 프로세스(`…/Docker.app/Contents/MacOS/com.docker.backend`)이고
+   `docker ps`의 포트 연결에 그 포트가 있으면 `docker`다(DC-14). 컨테이너마다 Entry 하나이고, 최상위는 listener 프로세스다.
+   맞는 컨테이너가 없거나 `docker ps`가 실패하면 다음 규칙으로 넘어간다(앱 `Docker`로 보인다).
+   `Ports`는 `0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp`처럼 쉼표로 나뉜다. `tcp`만 쓰고, 호스트 포트 범위
+   (`127.0.0.1:8000-8001->8000-8001/tcp`)는 펼치며, 호스트 포트 없이 `5432/tcp`만 있는 연결은 건너뛴다.
 4. 조상에 pm2 데몬(`PM2 … God Daemon`)이 있으면 `pm2`다. 데몬 바로 아래 프로세스가 최상위다.
 5. 조상에 셸(`zsh`·`bash`·`sh`·`fish` 등)이 있으면 `terminal`이다. 뿌리에 가장 가까운 셸을 찾고, 그 아래로 셸이 이어지면 건너뛴 뒤
    처음 나오는 셸이 아닌 프로세스를 최상위로 삼는다. `npm run dev` 아래의 `sh -c vite` 같은 셸은 이 규칙에 영향을 주지 않는다.
@@ -153,6 +164,11 @@ listener마다 `ps` 정보로 부모를 따라 올라가 조상 목록을 만든
    앱 아래에서 띄운 일반 프로세스(예: 에디터가 띄운 서버)면 가장 아래 앱 프로세스의 바로 아래 프로세스가 최상위다.
 7. 뿌리의 부모가 PID 1인데 위 규칙에 맞지 않으면 `detached`다(`nohup`·`&`·`disown`으로 띄운 경우). 뿌리가 최상위다.
 8. 나머지는 `unknown`이다.
+
+규칙 5~8로 정한 최상위가 listener와 다른 프로세스 그룹이면, 조상 중 listener와 같은 그룹인 가장 위 프로세스로 내려온다(Phase 3).
+코딩 도구가 자기 셸(`zsh -c …`)에서 서버를 띄우면 규칙 5는 터미널 셸 바로 아래의 도구를 최상위로 잡는다. 그러면 서버를 멈출 때
+도구까지 멈춘다(2026-11-19 사용자 Mac에서 Claude Code 아래 서버로 확인). 셸은 작업마다 프로세스 그룹을 만들므로 `npm run dev`는
+npm까지 같은 그룹이라 그대로다.
 
 라벨 이름 규칙(`homebrew.mxcl.*`, `sh.brew.*`)이나 `ps` 명령줄 글자로 서비스를 맞추지 않는다(DC-09).
 같은 최상위 프로세스에 속한 listener는 한 Entry로 묶는다.
@@ -190,7 +206,8 @@ listener와 그 조상의 명령줄 전체, launchd 라벨, 서비스 실행 파
 | 최상위가 portwatch 자신 | portwatch 자신입니다. |
 | 최상위가 root·현재 사용자가 아닌 사용자 | 다른 사용자의 프로세스입니다. |
 | 최상위가 root이고 `launchd-brew`가 아님 | root로 실행 중인 프로세스입니다. |
-| user 도메인 `launchd-other` | brew가 아닌 launchd 서비스는 아직 멈추지 않습니다(DC-13). |
+| user 도메인 `launchd-other` | brew가 아닌 launchd 서비스는 멈추지 않습니다(DC-13). |
+| `pm2` | pm2 항목은 portwatch에서 멈추지 않습니다. 터미널에서 pm2 stop으로 멈추세요(DC-22). |
 
 ### 진단 도구
 
@@ -206,7 +223,7 @@ listener와 그 조상에 해당하는 줄과 형식 확인용 앞부분만 남�
 launchd 서비스와 앱 자체는 프로젝트를 표시하지 않는다. root 서비스는 작업 폴더를 읽을 수 없고, brew 서비스의 작업 폴더
 (`/opt/homebrew/var` 등)는 Homebrew 저장소 안이라 프로젝트로 잡으면 틀린다.
 
-항목 제목은 brew 서비스면 포뮬러, 그 밖의 launchd 서비스면 라벨, 앱이면 앱 이름, 나머지는 프로젝트 이름이고 없으면
+항목 제목은 brew 서비스면 포뮬러, 그 밖의 launchd 서비스면 라벨, 앱이면 앱 이름, Docker면 컨테이너 이름, 나머지는 프로젝트 이름이고 없으면
 listener 실행 파일 이름이다. 단 dev-tool 분류는 listener 실행 파일 이름을 제목으로 하고 프로젝트는 따로 표시한다
 (예: 프로젝트 폴더에서 실행한 코딩 도구가 그 프로젝트 이름으로 보이지 않게). 항목은 분류 순서(개발 서버, 서비스, 개발 도구, 앱, 시스템)와 가장 작은 포트 순으로 정렬한다.
 
@@ -214,34 +231,49 @@ listener 실행 파일 이름이다. 단 dev-tool 분류는 listener 실행 파�
 
 ### 관리 주체별 계획
 
-| 관리 주체 | 명령 (제안) | 권한 | 비고 |
+멈추기 계획(`stopPlan`)은 코어가 판별 때 함께 만든다. 보호 항목에는 계획이 없다.
+아래 표는 Phase 3 설계다. DC-13·DC-14·DC-22는 2026-11-19에 정했고, DC-17은 사용자 Mac 확인(M-08)으로 닫는다.
+
+| 관리 주체 | 실행 (확인 창에 보이는 명령) | 권한 | 비고 |
 | --- | --- | --- | --- |
-| `terminal`·`detached`·`app` | 최상위 프로세스 그룹에 SIGTERM, 응답이 없으면 사용자 확인 후 SIGKILL | 일반 | nodemon 같은 감시 도구까지 함께 멈춘다 |
-| `launchd-brew` (user) | `brew services stop <포뮬러>` | 일반 | kill 하면 KeepAlive가 다시 띄울 수 있다 |
-| `launchd-brew` (system) | 관리자 권한으로 `brew services stop <포뮬러>` | 관리자 | 실제 명령 형태는 DC-17 |
-| `launchd-other` | `launchctl bootout <도메인>/<라벨>` | 도메인에 따라 | 허용 범위는 DC-13 |
-| `docker` | `docker stop <컨테이너>` | 일반 | DC-14 |
-| `pm2` | `pm2 stop <이름>` | 일반 | pm2 경로 찾기는 Phase 3 |
+| `terminal`·`detached`·`app`(앱 아래 프로세스와 앱 자체)·`unknown` | 최상위가 자기 프로세스 그룹의 리더(pgid = PID)면 그룹에 SIGTERM(`kill -TERM -<pgid>`), 아니면 최상위 PID에만(`kill -TERM <pid>`). 남아 있으면 사용자 확인 후 같은 대상에 SIGKILL | 일반 | nodemon 같은 감시 도구까지 함께 멈춘다. 그룹 리더가 아니면 셸이 같은 그룹일 수 있어 그룹에 보내지 않는다 |
+| `launchd-brew` (user) | `<brew> services stop <포뮬러>` (`brew services stop nginx`) | 일반 | kill 하면 KeepAlive가 다시 띄울 수 있다 |
+| `launchd-brew` (system) | 관리자 권한으로 `/usr/bin/env HOME=/var/root HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1 <brew> services stop <포뮬러>` | 관리자 | DC-17 제안. root brew는 `services`만 허용하고 `system` 도메인에서 bootout한 뒤 `/Library/LaunchDaemons`의 plist를 지운다 |
+| `launchd-other` | 없음 | — | DC-13: 멈추지 않는다 |
+| `docker` | `<docker> --host unix://<홈>/.docker/run/docker.sock stop <컨테이너 ID>` (`docker stop <이름>`) | 일반 | DC-14 |
+| `pm2` | 없음 | — | DC-22: 멈추지 않는다(사용자 결정) |
 | `launchd-socket`·system·보호 항목 | 없음 | — | 버튼을 보여주지 않는다 |
-| `unknown` | 최상위 PID에 SIGTERM | 일반 | 결과를 그대로 보고한다 |
+
+- `<brew>`는 서비스 실행 파일이 `/opt/homebrew/` 아래면 `/opt/homebrew/bin/brew`, `/usr/local/` 아래면 `/usr/local/bin/brew`다. 다른 경로는 쓰지 않는다.
+- `<docker>`는 포트 전달 프로세스 경로의 `…/Docker.app/Contents/Resources/bin/docker`다. 컨테이너는 이름이 아니라 ID로 멈춘다.
+- 신호는 셸을 거치지 않고 시스템 호출로 보낸다. PID·pgid가 0·1이면 보내지 않는다.
 
 ### 흐름
 
-1. 사용자가 멈추기를 누르면 확인 창에 대상·관리 주체·실행할 명령·필요한 권한을 보여준다.
-2. 실행 직전에 최상위 프로세스의 PID·시작 시각·명령줄이 스냅샷과 같은지 다시 확인한다. 다르면 멈추지 않는다(PID 재사용 방지).
-3. 계획을 실행한다.
-4. 최대 5초 동안 다시 수집해 결과를 보고한다.
-   - 포트가 비고 프로세스가 없으면 성공이다.
-   - 같은 관리 주체로 새 프로세스가 떴으면 "다시 실행됨: <관리 주체>"로 알린다.
-   - 프로세스가 남아 있으면 "아직 실행 중"으로 알리고, 가능한 경우 강제 종료를 제안한다.
+1. 사용자가 멈추기를 누르면 같은 창 안의 확인 칸에 대상·관리 주체·실행할 명령·필요한 권한을 보여준다.
+2. 화면은 항목 `id`만 보낸다. 셸은 마지막 수집 결과에서 그 항목의 계획을 찾아 쓰고, 화면이 보낸 명령이나 값은 쓰지 않는다.
+3. 실행 직전에 최상위 프로세스의 PID·시작 시각·명령줄을 `ps`로 다시 읽어 스냅샷과 같은지 확인한다. 다르면 멈추지 않고 "바뀜"으로 알린다(PID 재사용 방지).
+   계획의 값(포뮬러·컨테이너 ID·경로)도 실행 직전에 다시 검증한다.
+4. 계획을 실행한다. 한 번에 한 항목만 멈춘다(실행 중 다른 요청은 거절).
+5. 0.5초 간격으로 최대 5초 동안 다시 수집해 결과를 정한다. 사라진 것이 보여도 2초가 될 때까지는 계속 본다(다시 뜨는지 보기 위해).
+   - 같은 `id`의 항목이 남아 있으면 "아직 실행 중"이다. 신호 계획이면 강제 종료(SIGKILL)를 제안한다.
+   - 같은 `key`의 다른 항목(새 프로세스)이 있으면 "다시 실행됨: <관리 주체>"다.
+   - 둘 다 없으면 "멈춤"이다.
+   판정은 코어의 순수 함수로 둔다.
+6. 결과는 그 항목 자리(없어졌으면 목록 위 상태 줄)에 보이고, 창을 닫았다 열어도 다음 결과 전까지 남는다.
+   관리자 비밀번호 창이 뜨면 팝오버가 포커스를 잃고 닫히므로, 결과는 창을 다시 열어 본다.
 
 ### 관리자 권한
 
 - 앱은 일반 사용자 권한으로만 실행한다. 관리자 권한은 확인한 명령 하나에만 쓴다.
-- macOS 관리자 비밀번호 창(`osascript`의 `do shell script … with administrator privileges`)을 쓴다.
-- 명령 문자열은 고정 틀에 검증한 값만 넣어 만든다. 라벨은 `^[A-Za-z0-9._-]+$`, 포뮬러는 `^[a-z0-9@+._-]+$`, PID는 숫자만 허용한다.
-- 사용자가 비밀번호 창을 취소하면 아무것도 바꾸지 않고 "취소됨"으로 표시한다.
-- 권한 상승이 실패하면 같은 명령을 복사해서 터미널에서 실행할 수 있게 보여준다.
+- macOS 관리자 비밀번호 창(`/usr/bin/osascript -e 'do shell script "<명령>" with administrator privileges'`)을 쓴다.
+  비밀번호는 macOS 창이 받고 앱은 다루지 않는다.
+- 명령 문자열은 고정 틀에 검증한 값만 넣어 만든다. 포뮬러는 `^[a-z0-9@+._-]+$`, 컨테이너 ID는 소문자 16진수 12~64자,
+  PID는 숫자만 허용한다. 값에 따옴표·공백·`;`·`$`·백슬래시가 들어갈 수 없으므로 AppleScript 문자열과 `/bin/sh` 명령줄을 벗어나지 못한다.
+- 사용자가 비밀번호 창을 취소하면(osascript 오류 -128) 아무것도 바꾸지 않고 "취소됨"으로 표시한다.
+- 권한 상승이 실패하면 `sudo <명령>`을 복사해서 터미널에서 실행할 수 있게 보여준다.
+- 비밀번호 입력을 기다리므로 osascript 제한 시간은 120초, 일반 멈추기 명령은 30초다.
+- `sudo brew services start`가 root 소유로 바꾼 파일은 멈춘 뒤에도 root 소유로 남는다. 앱은 소유자를 되돌리지 않는다(수동 검증 정리 절차).
 
 ### 보호 항목
 
@@ -297,6 +329,7 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
 | launchd 서비스(brew·그 밖) | `launchd:<라벨>` |
 | launchd 소켓 | `launchd-socket` |
 | 앱 자체 | `app:<앱 이름>` |
+| Docker 컨테이너 | `docker:<컨테이너 이름>` (Phase 3) |
 | 프로젝트가 있는 항목(개발 도구 제외) | `project:<프로젝트 경로>` |
 | 개발 도구와 그 밖 | `exe:<listener 실행 파일 이름>` (예: 같은 도구 여러 개를 한 번에 숨긴다) |
 
@@ -329,6 +362,8 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
 | `set_launch_at_login(enabled)` | 로그인 시 자동 실행을 켜고 끈다 |
 | `open_url(url)` | `http(s)://localhost` 또는 `127.0.0.1`에 포트만 붙은 주소만 기본 브라우저로 연다(`/usr/bin/open`) |
 | `copy_text(text)` | 2,000자 이하 글자를 클립보드에 넣는다(`/usr/bin/pbcopy`) |
+| `stop_entry(id)` | 마지막 수집 결과의 그 항목을 계획대로 멈추고 결과를 돌려준다(Phase 3, "멈추기" 절) |
+| `force_stop_entry(id)` | 신호 계획 항목에만 같은 대상에 SIGKILL을 보낸다(Phase 3) |
 | `hide_popover`·`quit_app` | 창 닫기, 앱 종료 |
 
 ### 화면
@@ -337,7 +372,11 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
 - 분류 순서는 개발 서버, 서비스, 개발 도구, 앱, 시스템·보안, 숨긴 항목이다. 개발 서버·서비스만 기본으로 펼친다.
 - 행을 누르면 상세가 펼쳐진다: 프로세스 목록(PID·사용자·명령줄), 프로젝트 경로, 시작 시각, 라벨, 보호 이유.
   상세의 버튼: 열기·URL 복사(개발 서버·서비스이고 포트가 있을 때, `http://localhost:<가장 작은 포트>`), 숨기기/다시 보이기,
-  개발 서버로 고정/고정 해제.
+  개발 서버로 고정/고정 해제, 멈추기(계획이 있고 보호가 없을 때, Phase 3).
+- 멈추기를 누르면 상세 안에 확인 칸(대상·관리 주체·명령·"관리자 비밀번호가 필요합니다" 또는 "일반 권한")과 멈추기·취소 버튼이 열린다.
+  실행 중에는 "멈추는 중…"을, 끝나면 결과(멈춤·다시 실행됨·아직 실행 중·취소됨·바뀜·실패)를 보인다.
+  실패하면 터미널용 명령 복사 버튼을, "아직 실행 중"이고 신호 계획이면 강제 종료 버튼(한 번 더 확인)을 보인다.
+  `stop_entry` 결과 모양: `{ outcome, message, command, canForce }`. `outcome`은 `stopped | restarted | still-running | cancelled | changed | failed`.
 - 갱신 때 펼친 행·접은 분류·스크롤 위치를 유지한다. 내용(수집 시각 제외)이 같으면 다시 그리지 않는다.
   펼침 상태는 항목 key로 기억하고, 앱을 다시 켜도 남도록 웹뷰 저장소에 둔다(읽기 실패는 무시).
 - Esc로 창을 닫는다. 설정은 같은 창의 설정 화면에서 바꾼다.
@@ -404,16 +443,26 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
   2차 결과(run 44441488154)에서 기본으로 펼치는 개발 서버·서비스에 모노레포 개발 서버와 root nginx만 남았다. 분리 실행 데몬과
   코딩 도구 3개는 개발 도구, 보안 프로그램 6개·Apple 서비스·launchd 소켓은 시스템·보안으로 접혔다. 사용자가 고칠 수 있는 목록과
   "개발 서버로 고정"·숨기기는 Phase 2에서 만든다. 검증: M-04.
-- [ ] DC-13: brew가 아닌 launchd 서비스를 멈출 수 있게 할지와 범위. 제안: `/Library`·`~/Library` 아래 사용자가 설치한
-  plist만 허용하고 Apple 서비스는 막는다. Phase 3.
-- [ ] DC-14: Docker Desktop(또는 OrbStack·colima)에서 포트를 여는 프로세스 형식과 컨테이너 연결 방법. Phase 3에서 사용자 Mac으로 확인한다.
+- [x] DC-13: brew가 아닌 launchd 서비스(`launchd-other`)는 지금은 멈추지 않는다. 2026-11-19 사용자 결정("지금은 멈추지 않음").
+  근거: 사용자 Mac의 brew 외 LaunchAgent·LaunchDaemon은 업데이터와 보안 프로그램뿐이어서 멈출 이유가 적고, 잘못 멈추면 위험하다.
+  보호 이유로 안내한다. 개발용 launchd 서비스를 쓰게 되면 다시 연다(사용자 LaunchAgent만 `launchctl bootout gui/<uid>/<라벨>`로 허용하는 안).
+  검증: M-10.
+- [x] DC-14: Docker Desktop은 `…/Docker.app/Contents/MacOS/com.docker.backend services` 프로세스가 컨테이너의 호스트 포트를 연다
+  (부모는 같은 앱의 `com.docker.backend`, 그 부모는 PID 1, launchd 표에는 `application.` 라벨). 컨테이너는 `docker ps`의 `Ports`
+  (`0.0.0.0:18080->8080/tcp, 127.0.0.1:18081->8081/tcp`)의 호스트 포트로 맞추고, `docker stop <ID>`로 멈춘다.
+  근거: 2026-11-19 사용자 Mac(Docker Desktop, 엔진 28.1.1)에서 시험 컨테이너로 확인했다. 환경을 비운 상태에서도 `docker ps`가 동작했다.
+  OrbStack·colima는 사용자 Mac에 없어 지원하지 않는다(앱이나 분리 실행으로 보인다). 쓰게 되면 그때 형식을 확인한다. 검증: F-05, M-11.
 - [ ] DC-15: nginx 설정 읽기 방식. `nginx -T`(전체 설정 출력)와 설정 파일 직접 읽기 중 고른다.
   `nginx -T`가 일반 권한으로 동작하는지(로그 파일 권한 등) 확인한다. Phase 4.
 - [x] DC-16: 갱신 주기 기본값은 창을 연 동안 3초, 닫은 동안 15초이고 설정에서 2·3·5초와 10·15·30·60초 중 고른다.
   근거: 2026-11-19 사용자가 이 기본값으로 Phase 2 앱을 써서 목록·숫자 갱신이 문제없다고 확인했고, macOS CI 실행기에서 수집 한 번이
   110 ms였다(항목 1개). 사용자 Mac의 수집 시간·CPU 수치는 받지 않았다. CPU 부담이 보고되면 닫힌 동안의 기본값부터 늘린다. 검증: M-05.
-- [ ] DC-17: root brew 서비스를 관리자 권한으로 멈추는 실제 명령. 관리자 권한 셸에서 `brew services stop`이 동작하는지,
-  아니면 `launchctl bootout system/<라벨>`과 plist 처리를 직접 해야 하는지 Phase 3에서 사용자 Mac으로 확인한다. 검증: M-08.
+- [ ] DC-17: root brew 서비스를 관리자 권한으로 멈추는 실제 명령. 제안: 관리자 권한으로 `/usr/bin/env HOME=/var/root
+  HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1 <brew> services stop <포뮬러>`("멈추기" 절).
+  근거(2026-11-19, 사용자 Mac의 Homebrew 7.0.14 소스): `brew.sh`의 root 검사는 `services` 명령을 허용하고, root일 때 `brew services stop`은
+  `system` 도메인에서 `launchctl bootout`한 뒤 `/Library/LaunchDaemons`의 plist를 지운다. `launchctl bootout`만 쓰면 plist가 남아
+  재부팅 때 다시 뜬다. `HOME=/var/root`는 root brew가 사용자 홈의 캐시에 root 소유 파일을 만들지 않게 하려는 것이다.
+  남은 확인: osascript 관리자 권한에서 실제로 멈추는지, 취소 처리. 사용자 Mac M-08로 닫는다.
 - [ ] DC-18: 배포 위치. TBD — 사용자 결정 필요. 비공개 저장소의 Releases는 Homebrew가 인증 없이 받을 수 없다.
   - (a) portwatch 저장소를 공개로 바꾼다. 가장 단순하다.
   - (b) 코드는 비공개로 두고 빌드한 앱만 공개 저장소(예: `superlucky84/homebrew-tap`의 Releases)에 올린다.
@@ -426,3 +475,7 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
   가짜로 바꾸고 Playwright(`@playwright/test` 1.63.0)로 이 개발 환경과 Linux CI에서 돌린다. 검증: `npm run test:ui`.
 - [ ] DC-21: Gatekeeper 처리. 허용 절차를 README로 안내할지, cask 설치 단계에서 격리 표시를 지울지 고른다.
   후자는 편하지만 Gatekeeper 확인을 건너뛰므로 회사 보안 정책에 맞는지 사용자가 판단해야 한다. Phase 5. 검증: M-14.
+- [x] DC-22: pm2 항목은 멈추지 않는다. 목록에는 보이고, 보호 이유로 터미널의 `pm2 stop`을 안내한다.
+  2026-11-19 사용자 결정("pm2는 안 써서 A로"). 근거: 사용자가 pm2를 쓰지 않고 사용자 Mac에도 없어 확인할 수 없다.
+  `pm2 stop`에는 pm2 경로·node·앱 이름(`pm2 jlist`)이 필요하고, pm2 자식을 신호로 멈추면 pm2가 다시 띄운다.
+  pm2를 쓰게 되면 다시 연다(`pm2 stop <이름>` 지원). 검증: 합성 자료 F-06, M-10.

@@ -7,6 +7,7 @@ use std::sync::atomic::Ordering;
 use portwatch_core::actions::{validate_copy_text, validate_open_url};
 use portwatch_core::resolve::DEFAULT_SECURITY_NAMES;
 use portwatch_core::settings::{Settings, SettingsUpdate, CLOSED_CHOICES, OPEN_CHOICES};
+use portwatch_core::stop::{Outcome, StopReport};
 use portwatch_core::Snapshot;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -143,6 +144,56 @@ pub fn copy_text(text: String) -> Result<(), String> {
     } else {
         Err("클립보드에 넣지 못했습니다.".to_owned())
     }
+}
+
+/// 멈추기 중 표시를 끝날 때(실패·panic 포함) 지운다.
+struct StoppingGuard<'a>(&'a AppState);
+
+impl Drop for StoppingGuard<'_> {
+    fn drop(&mut self) {
+        self.0.stopping.store(false, Ordering::Release);
+    }
+}
+
+/// 마지막 수집 결과에서 항목의 계획을 찾아 멈춘다. 화면이 보낸 값은 항목 id뿐이다(docs/DESIGN.md "멈추기").
+fn stop_blocking(app: &AppHandle, id: &str, force: bool) -> Result<StopReport, String> {
+    let state = app.state::<AppState>();
+    if state.stopping.swap(true, Ordering::AcqRel) {
+        return Err("다른 항목을 멈추는 중입니다.".to_owned());
+    }
+    let guard = StoppingGuard(&state);
+    let report = match guard.0.raw() {
+        None => StopReport::new(Outcome::Changed, "아직 수집 결과가 없습니다."),
+        Some(before) => portwatch_collect::stop::stop_on_this_mac(
+            &before,
+            id,
+            force,
+            guard.0.settings().security_names(),
+            &mut |snapshot| {
+                guard.0.set_raw(snapshot.clone());
+                refresh::publish(app);
+            },
+        ),
+    };
+    drop(guard);
+    state.wake();
+    Ok(report)
+}
+
+async fn run_stop(app: AppHandle, id: String, force: bool) -> Result<StopReport, String> {
+    tauri::async_runtime::spawn_blocking(move || stop_blocking(&app, &id, force))
+        .await
+        .map_err(|error| format!("멈추기를 실행하지 못했습니다: {error}"))?
+}
+
+#[tauri::command]
+pub async fn stop_entry(app: AppHandle, id: String) -> Result<StopReport, String> {
+    run_stop(app, id, false).await
+}
+
+#[tauri::command]
+pub async fn force_stop_entry(app: AppHandle, id: String) -> Result<StopReport, String> {
+    run_stop(app, id, true).await
 }
 
 #[tauri::command]

@@ -24,6 +24,8 @@ pub struct AppState {
     /// 설정 파일을 읽거나 쓰지 못했을 때의 경고. 스냅샷 경고에 붙인다.
     settings_warning: Mutex<Option<String>>,
     pub popover_open: AtomicBool,
+    /// 멈추기를 실행하는 중인지. 한 번에 한 항목만 멈춘다.
+    pub stopping: AtomicBool,
     /// 창이 포커스를 잃어 마지막으로 닫힌 시각.
     pub hidden_by_blur_at: Mutex<Option<Instant>>,
     wake: Mutex<Option<Sender<()>>>,
@@ -52,6 +54,7 @@ impl AppState {
             settings_path,
             settings_warning: Mutex::new(warning),
             popover_open: AtomicBool::new(false),
+            stopping: AtomicBool::new(false),
             hidden_by_blur_at: Mutex::new(None),
             wake: Mutex::new(None),
         }
@@ -83,6 +86,11 @@ impl AppState {
 
     pub fn set_raw(&self, snapshot: Snapshot) {
         *lock(&self.raw) = Some(snapshot);
+    }
+
+    /// 수집한 그대로의 마지막 스냅샷. 멈추기 계획은 여기서만 찾는다.
+    pub fn raw(&self) -> Option<Snapshot> {
+        lock(&self.raw).clone()
     }
 
     /// 마지막 스냅샷에 설정을 적용한 사본. 아직 수집 전이면 없음.

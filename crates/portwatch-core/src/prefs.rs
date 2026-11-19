@@ -59,6 +59,7 @@ mod tests {
             project: None,
             domains: Vec::new(),
             protection: None,
+            stop_plan: None,
             hidden: false,
             pinned: false,
         }

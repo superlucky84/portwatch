@@ -255,9 +255,103 @@ pub fn lsof_cwd(text: &str) -> HashMap<u32, String> {
     cwd
 }
 
+/// `docker ps --no-trunc --format '{{json .}}'`의 컨테이너 하나.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DockerContainer {
+    pub id: String,
+    pub name: String,
+    /// 호스트 쪽 tcp 포트(중복 없이 오름차순).
+    pub host_ports: Vec<u16>,
+}
+
+/// `docker ps`의 JSON 줄들을 읽는다. 읽지 못한 줄 수를 함께 돌려준다.
+pub fn docker_ps(text: &str) -> (Vec<DockerContainer>, usize) {
+    let mut containers = Vec::new();
+    let mut skipped = 0;
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        match docker_row(line) {
+            Some(container) => containers.push(container),
+            None => skipped += 1,
+        }
+    }
+    (containers, skipped)
+}
+
+fn docker_row(line: &str) -> Option<DockerContainer> {
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    let field = |name: &str| value.get(name).and_then(serde_json::Value::as_str);
+    let id = field("ID")?.to_owned();
+    // 여러 이름이 있으면 쉼표로 나뉜다. 첫 이름을 쓴다.
+    let name = field("Names")?.split(',').next()?.trim().to_owned();
+    if id.is_empty() || name.is_empty() {
+        return None;
+    }
+    let mut host_ports: Vec<u16> = field("Ports")
+        .unwrap_or("")
+        .split(',')
+        .flat_map(docker_host_ports)
+        .collect();
+    host_ports.sort_unstable();
+    host_ports.dedup();
+    Some(DockerContainer {
+        id,
+        name,
+        host_ports,
+    })
+}
+
+/// `0.0.0.0:5432->5432/tcp`, `[::]:8000-8001->8000-8001/tcp` 한 칸의 호스트 포트. 호스트 연결이 없거나 tcp가 아니면 없음.
+fn docker_host_ports(mapping: &str) -> Vec<u16> {
+    let Some((host, container)) = mapping.trim().split_once("->") else {
+        return Vec::new();
+    };
+    if !container.ends_with("/tcp") {
+        return Vec::new();
+    }
+    let Some((_, range)) = host.rsplit_once(':') else {
+        return Vec::new();
+    };
+    let (start, end) = range.split_once('-').unwrap_or((range, range));
+    match (start.parse::<u16>(), end.parse::<u16>()) {
+        // 잘못된 범위가 수많은 포트로 펼쳐지지 않게 크기를 제한한다.
+        (Ok(start), Ok(end)) if start <= end && end - start < 1024 => (start..=end).collect(),
+        _ => Vec::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn docker_ps_reads_ids_names_and_tcp_host_ports() {
+        let text = concat!(
+            r#"{"ID":"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2","Names":"shop-db","Ports":"0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp"}"#,
+            "\n",
+            r#"{"ID":"b2c3d4e5f6a1","Names":"web,alias","Ports":"127.0.0.1:8000-8001->8000-8001/tcp, 0.0.0.0:5353->53/udp, 9000/tcp"}"#,
+            "\n",
+            r#"{"ID":"c3d4e5f6a1b2","Names":"quiet","Ports":""}"#,
+            "\nnot json\n",
+        );
+        let (containers, skipped) = docker_ps(text);
+        assert_eq!(skipped, 1);
+        assert_eq!(containers.len(), 3);
+        assert_eq!(containers[0].name, "shop-db");
+        assert_eq!(containers[0].host_ports, [5432]);
+        assert_eq!(containers[1].name, "web");
+        assert_eq!(containers[1].host_ports, [8000, 8001]);
+        assert!(containers[2].host_ports.is_empty());
+    }
+
+    #[test]
+    fn docker_port_ranges_are_bounded() {
+        assert_eq!(
+            docker_host_ports("0.0.0.0:1-65535->1-65535/tcp"),
+            Vec::<u16>::new()
+        );
+        assert_eq!(docker_host_ports("0.0.0.0:9-8->9-8/tcp"), Vec::<u16>::new());
+        assert_eq!(docker_host_ports("garbage"), Vec::<u16>::new());
+    }
 
     const NETSTAT: &str = "\
 Active Internet connections (including servers)

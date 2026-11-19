@@ -5,6 +5,7 @@
 
 pub mod raw;
 pub mod report;
+pub mod stop;
 mod system;
 
 use std::collections::HashMap;
@@ -162,6 +163,7 @@ pub fn facts_from_first_pass(pass: &FirstPass, env: &Environment) -> Facts {
         processes,
         system_jobs,
         user_jobs,
+        home: env.home.clone(),
         self_pid: env.self_pid,
         current_uid: env.uid,
         security_names: env.security_names.clone(),
@@ -173,6 +175,21 @@ pub fn facts_from_first_pass(pass: &FirstPass, env: &Environment) -> Facts {
 /// `launchctl print <대상>` 인수.
 pub fn detail_args(target: &ServiceTarget, uid: u32) -> [String; 2] {
     ["print".to_owned(), target.launchctl_target(uid)]
+}
+
+/// `docker ps` 인수. 소켓을 Docker Desktop 것으로 고정해 원격 context로 나가지 않게 한다(docs/DESIGN.md "수집").
+pub fn docker_ps_args(home: &str) -> Vec<String> {
+    [
+        "--host",
+        portwatch_core::stop::docker_socket(home).as_str(),
+        "ps",
+        "--no-trunc",
+        "--format",
+        "{{json .}}",
+    ]
+    .iter()
+    .map(|s| (*s).to_owned())
+    .collect()
 }
 
 /// `lsof` 인수.
@@ -240,6 +257,31 @@ pub fn collect_facts(runner: &dyn Runner, files: &dyn Files, env: &Environment) 
             Err(error) => facts
                 .warnings
                 .push(format!("작업 폴더(lsof)를 읽지 못했습니다. {error}")),
+        }
+    }
+
+    if let Some(docker) = &lookups.docker_cli {
+        match run_owned(runner, docker, &docker_ps_args(&env.home)) {
+            Ok(output) if output.success => {
+                let (containers, skipped) = parse::docker_ps(&output.stdout);
+                if skipped > 0 {
+                    facts
+                        .warnings
+                        .push(format!("docker ps 출력 {skipped}줄을 읽지 못했습니다."));
+                }
+                facts.containers = containers;
+            }
+            result => {
+                let detail = match result {
+                    Ok(output) => output.stderr.lines().next().unwrap_or("").trim().to_owned(),
+                    Err(error) => error,
+                };
+                facts.warnings.push(
+                    format!("Docker 컨테이너 목록을 읽지 못했습니다. {detail}")
+                        .trim()
+                        .to_owned(),
+                );
+            }
         }
     }
 
@@ -325,6 +367,9 @@ pub(crate) mod fake {
                     format!("service-{domain}-{label}.txt")
                 }
                 ("/usr/sbin/lsof", _) => "lsof-cwd.txt".to_owned(),
+                ("/Applications/Docker.app/Contents/Resources/bin/docker", _) => {
+                    "docker-ps.txt".to_owned()
+                }
                 _ => return Err(format!("알 수 없는 명령: {call}")),
             };
             Ok(CommandOutput {
@@ -387,16 +432,19 @@ mod tests {
         let snapshot = collect_with(&runner, &files(), &env());
 
         assert!(snapshot.warnings.is_empty(), "{:?}", snapshot.warnings);
-        assert_eq!(snapshot.entries.len(), 15);
+        assert_eq!(snapshot.entries.len(), 19);
         let titles: Vec<&str> = snapshot.entries.iter().map(|e| e.title.as_str()).collect();
         assert_eq!(
-            &titles[..7],
+            &titles[..10],
             [
                 "api-server",
+                "node",
                 "worker",
                 "queue",
                 "shop-web",
+                "shop-db",
                 "Python",
+                "mock-api",
                 "redis",
                 "nginx"
             ]
@@ -420,10 +468,14 @@ mod tests {
 
         let calls = runner.calls.lock().unwrap();
         assert!(calls.contains(
-            &"/usr/sbin/lsof -a -p 2100,2102,2200,2202,2300,2400,2500,2601,2700 -d cwd -Fn"
+            &"/usr/sbin/lsof -a -p 2100,2102,2200,2202,2300,2400,2500,2601,2700,2801,2802 -d cwd -Fn"
                 .to_owned()
         ));
         assert!(calls.contains(&"/bin/launchctl print gui/501/homebrew.mxcl.redis".to_owned()));
+        assert!(calls.contains(
+            &"/Applications/Docker.app/Contents/Resources/bin/docker --host unix:///Users/dev/.docker/run/docker.sock ps --no-trunc --format {{json .}}"
+                .to_owned()
+        ));
         assert!(calls.contains(
             &"/bin/ps -ww -axo pid=,ppid=,pgid=,uid=,tty=,user=,lstart=,command=".to_owned()
         ));

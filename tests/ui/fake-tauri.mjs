@@ -33,6 +33,7 @@ function entry(key, title, category, kind, ports, extra = {}) {
     project: extra.project ?? null,
     domains: [],
     protection: extra.protection ?? null,
+    stopPlan: extra.stopPlan ?? null,
     hidden: extra.hidden ?? false,
     pinned: extra.pinned ?? false,
   };
@@ -50,6 +51,7 @@ export function snapshot(overrides = {}) {
       }),
       entry('project:/Users/dev/work/shop-web', 'shop-web', 'dev-server', 'terminal', [5173], {
         project: { name: 'shop-web', path: '/Users/dev/work/shop-web' },
+        stopPlan: { method: { kind: 'signal', pid: 2100, group: true }, command: 'kill -TERM -2100', admin: false },
         processes: Array.from({ length: 10 }, (_, index) => ({
           pid: 2100 + index,
           ppid: index === 0 ? 2001 : 2100,
@@ -63,6 +65,11 @@ export function snapshot(overrides = {}) {
       }),
       entry('launchd:sh.brew.nginx', 'nginx', 'service', 'launchd-brew', [8080], {
         manager: { domain: 'system', label: 'sh.brew.nginx', formula: 'nginx', runsAsRoot: true },
+        stopPlan: {
+          method: { kind: 'brew-services', brew: '/opt/homebrew/bin/brew', formula: 'nginx', domain: 'system' },
+          command: 'brew services stop nginx',
+          admin: true,
+        },
       }),
       entry('exe:codex', 'codex', 'dev-tool', 'terminal', [53733], { address: '127.0.0.1' }),
       entry('app:Player', 'Player', 'app', 'app', [57621], {
@@ -145,6 +152,14 @@ export function installFakeTauri(state) {
           }
           case 'set_launch_at_login':
             return args.enabled;
+          case 'stop_entry':
+          case 'force_stop_entry': {
+            const reply = (state.stopReplies ?? {})[command];
+            if (reply?.error) {
+              throw new Error(reply.error);
+            }
+            return reply ?? { outcome: 'stopped', message: '멈췄습니다.', command: null, canForce: false };
+          }
           default:
             return null;
         }

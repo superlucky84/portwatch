@@ -11,7 +11,8 @@
 - 완료(2026-11-18): Phase 0 부트스트랩. 사용자 Mac에서 메뉴바 아이콘·Dock 숨김·창 열고 닫기·종료를 확인했다.
 - 완료(2026-11-19): Phase 1 탐지 코어. 사용자 Mac에서 root·사용자 brew 서비스, 터미널 서버, 잡음 분류를 probe로 확인했다.
 - 완료(2026-11-19): Phase 2 메뉴바 목록 화면. 사용자 Mac에서 목록·접기·숨기기·고정·자동 갱신·아이콘 숫자·열기·복사·설정을 확인했다.
-- 다음: Phase 3 멈추기. 지금 앱은 보기·숨기기·고정까지 하고 멈추기는 아직 없다.
+- 구현 완료(2026-11-19): Phase 3 멈추기. 코드·자동 테스트는 끝났고 사용자 Mac 수동 검증(M-06~M-11)은 Phase 7로 미뤘다(사용자 결정).
+- 진행 중(2026-11-19): Phase 4 도메인·프록시·인증서.
 
 상세 계약을 바꾸면 요구사항·설계·단계·수동 기준을 같은 작업에서 갱신한다.
 미구현 명령이나 테스트를 이미 쓸 수 있는 것으로 안내하지 않는다.
@@ -23,7 +24,7 @@
 | `npm run check` | `cargo fmt --check`, 코어·수집기 `cargo clippy -D warnings`, 문서 링크·앵커·ID 검사 | 이 개발 환경, CI(Linux) |
 | `npm run check:app` | 셸 크레이트 `cargo clippy -D warnings` | macOS CI. Linux는 WebKitGTK 개발 패키지가 있어야 한다 |
 | `npm test` | `cargo test -p portwatch-core -p portwatch-collect` (합성 자료 테스트) | 이 개발 환경, CI(Linux) |
-| `npm run test:ui` | 가짜 스냅샷으로 화면 테스트 (Playwright) | Phase 2에서 만든다 |
+| `npm run test:ui` | 가짜 스냅샷으로 화면 테스트 (Playwright) | 이 개발 환경, CI(Linux) |
 | `npm run build:mac` | `tauri build --bundles app`으로 .app 생성 | macOS CI(수동 실행), 사용자 Mac |
 
 ## Phase 0 — 프로젝트 부트스트랩: 완료
@@ -267,27 +268,86 @@ Files:
 - `ui/style.css` (modified)
 - `ui/view.js` (added)
 
-## Phase 3 — 멈추기: 대기
+## Phase 3 — 멈추기: 구현 완료(사용자 확인 대기)
 
-Refs: RQ-06, PR-01, PR-02, DC-13, DC-14, DC-17, M-06, M-07, M-08, M-09, M-10, M-11
+Refs: RQ-04, RQ-06, PR-01, PR-02, PR-03, DC-13, DC-14, DC-17, DC-22, M-06, M-07, M-08, M-09, M-10, M-11
 
-진입 기준: Phase 2 완료.
+진입 기준: Phase 2 완료. 사용자가 Phase 2 리뷰 없이 진행하기로 했다(2026-11-19, "계속 진행").
+작업 위치: 사용자 Mac 로컬 세션(macOS 15.6.1, Rust 1.100.0을 mise로 설치). 시작 때 기준선 `npm run check`·`npm test`(43개)·
+`npm run check:app`·`npm run test:ui`(8개)가 이 Mac에서 통과했다.
 
-- [ ] 코어: 관리 주체별 멈추기 계획, 보호 항목 판정, 명령 틀에 넣을 값 검증.
-- [ ] 실행기: 프로세스 그룹 신호, `brew services stop`, `launchctl bootout`, `docker stop`, `pm2 stop`, 관리자 권한 실행.
-- [ ] 실행 직전 PID·시작 시각·명령줄 재확인, 실행 뒤 최대 5초 재수집과 결과 판정(성공·다시 실행됨·아직 실행 중).
-- [ ] 화면: 확인 창(대상·관리 주체·명령·권한), 진행 표시, 결과, 강제 종료 제안.
-- [ ] 사용자 Mac에서 DC-14(Docker 형식)·DC-17(root brew 서비스 멈추기 명령)을 확인하고 닫는다.
+결정(2026-11-19): DC-13 닫음(멈추지 않음, 사용자 결정), DC-14 닫음(Docker Desktop 형식 확인). DC-17은 Homebrew 소스로 제안을 정했고
+M-08로 닫는다. DC-22(pm2)는 사용자 결정으로 닫았다: pm2를 쓰지 않으므로 멈추지 않는다(목록에는 보이고 안내만 한다).
 
-기준 검증: 계획·보호 판정·값 검증(따옴표·세미콜론 등 주입 시도 거부) 단위 테스트.
-이 개발 환경에서 실제 자식 프로세스 그룹을 만들어 SIGTERM·SIGKILL 동작을 확인하는 테스트(신호 동작은 Linux에서도 같다).
-종료 기준: 사용자 Mac에서 M-06~M-11 통과.
+- [x] 코어 파서: `docker ps --format '{{json .}}'` 줄 → 컨테이너(ID·이름·tcp 호스트 포트, 범위 펼침).
+- [x] 코어 판별: Docker Desktop 포트 전달 프로세스 규칙(판별 순서 3), 컨테이너별 Entry(`docker:<이름>` key, id에 컨테이너 ID),
+  추가 조회 목록에 docker CLI 경로. 보호 이유 문구(DC-13·DC-22).
+- [x] 코어 판별: 최상위를 listener와 같은 프로세스 그룹으로 좁히는 규칙(코딩 도구 셸 아래 서버, 아래 검증 기록).
+- [x] 코어 멈추기(`stop.rs`): 관리 주체별 계획(`stopPlan`), 값 검증(포뮬러·컨테이너 ID·PID·경로), 관리자 명령 문자열 틀,
+  결과 판정 함수(멈춤·다시 실행됨·아직 실행 중).
+- [x] 수집기: `docker ps` 두 번째 단계 실행, 합성 자료 F-05.
+- [x] 실행기(`portwatch-collect/src/stop.rs`): 실행 직전 `ps -p` 재확인, 신호(그룹·PID, SIGTERM·SIGKILL), `brew services stop`, `docker stop`,
+  osascript 관리자 실행과 취소 판별, 0.5초 간격 최대 5초 재수집.
+- [x] 셸: `stop_entry(id)`·`force_stop_entry(id)` 명령(마지막 수집 결과의 계획만 사용, 한 번에 하나), 멈춘 뒤 갱신 루프 깨우기.
+- [x] 화면: 멈추기 버튼, 확인 칸, 진행·결과 표시, 실패 시 명령 복사, 강제 종료. 화면 테스트 6개 추가.
+- [ ] 사용자 Mac: M-06~M-11. DC-17을 M-08 결과로 닫는다. 사용자 결정(2026-11-19)으로 Phase 7에서 한꺼번에 확인한다.
+
+기준 검증: 계획·보호 판정·값 검증(따옴표·세미콜론 등 주입 시도 거부)·결과 판정·docker 파서 단위 테스트.
+실제 자식 프로세스 그룹을 만들어 SIGTERM·SIGKILL과 재확인 거부(시작 시각이 다른 경우)를 확인하는 테스트.
+`npm run check`·`npm test`·`npm run check:app`·`npm run test:ui` 통과.
+종료 기준: 사용자 Mac에서 M-06~M-08, M-10, M-11 통과. M-09는 KeepAlive 부분만(pm2는 DC-22로 멈추지 않는다).
+사용자 결정(2026-11-19, "사용자 테스트는 가장 마지막에 몰아서"): 자동 검증 통과로 구현을 마치고 다음 단계로 넘어간다.
+위 수동 기준은 Phase 7에서 확인하고, 실패하면 이 단계로 되돌린다.
+
+검증 기록(2026-11-19, 사용자 Mac의 로컬 세션):
+
+- `npm run check` 통과, `npm test` 64개 통과(코어 35·합성 자료 시나리오 12·수집기 17), `npm run check:app` 통과,
+  `npm run test:ui` 14개 통과, `npm run build:mac` 성공(`target/release/bundle/macos/portwatch.app`).
+- 실제 프로세스 그룹 테스트(`real_process_group_is_rechecked_and_terminated`): `ps -p` 재확인이 맞고, 시작 시각이 다르면 거부하며,
+  그룹 SIGTERM으로 자식까지 끝난다.
+- 에이전트가 직접 띄운 시험 대상만 실제 실행기로 멈췄다(시험용 프로그램, 저장소 밖):
+  Docker Desktop 시험 컨테이너(`docker stop <ID>`, 멈춤), PID 1 아래 감시 도구 흉내 node와 그 자식 서버(`kill -TERM -<pgid>`, 둘 다 끝남),
+  코딩 도구(Claude Code) 셸 아래 서버(도구의 `zsh -c` 그룹만 끝남). 사용자 서비스·brew·보안 프로그램은 건드리지 않았다.
+- 발견과 수정: 코딩 도구가 자기 셸에서 띄운 서버는 기존 규칙 5에서 도구 자체가 최상위가 되어, 멈추기 계획이 도구의 프로세스 그룹을 겨눴다.
+  수정 전 빌드로 시험하다 이 계획이 실제로 실행되어 Claude Code 세션이 한 번 종료됐다(에이전트 실수: 시험 프로그램을 다시 빌드하지 않았다).
+  최상위를 listener와 같은 그룹으로 좁히는 규칙을 넣고(DESIGN "판별 순서"), 합성 자료(3100번)와 사용자 Mac에서 다시 확인했다.
+  이후 시험 프로그램은 대상이 자기 조상이면 거부하고, 확인 뒤에만 실행한다.
+- 아직 확인하지 않은 것: 앱 화면에서의 멈추기, osascript 관리자 권한과 취소(M-08), 사용자 brew 서비스(M-07).
+
+Files:
+- `crates/portwatch-collect/src/lib.rs` (modified)
+- `crates/portwatch-collect/src/report.rs` (modified)
+- `crates/portwatch-collect/src/stop.rs` (added)
+- `crates/portwatch-core/src/lib.rs` (modified)
+- `crates/portwatch-core/src/parse.rs` (modified)
+- `crates/portwatch-core/src/prefs.rs` (modified)
+- `crates/portwatch-core/src/resolve.rs` (modified)
+- `crates/portwatch-core/src/snapshot.rs` (modified)
+- `crates/portwatch-core/src/stop.rs` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/docker-ps.txt` (added)
+- `crates/portwatch-core/tests/fixtures/mac-15/launchctl-gui.txt` (modified)
+- `crates/portwatch-core/tests/fixtures/mac-15/netstat.txt` (modified)
+- `crates/portwatch-core/tests/fixtures/mac-15/ps.txt` (modified)
+- `crates/portwatch-core/tests/mac_fixtures.rs` (modified)
+- `docs/DESIGN.md` (modified)
+- `docs/IMPLEMENT.md` (modified)
+- `docs/MANUAL_TEST_CHECKLIST.md` (modified)
+- `docs/REQUIREMENTS.md` (modified)
+- `src-tauri/src/commands.rs` (modified)
+- `src-tauri/src/main.rs` (modified)
+- `src-tauri/src/state.rs` (modified)
+- `tests/ui/fake-tauri.mjs` (modified)
+- `tests/ui/popover.spec.mjs` (modified)
+- `ui/index.html` (modified)
+- `ui/main.js` (modified)
+- `ui/style.css` (modified)
+- `ui/view.js` (modified)
 
 ## Phase 4 — 도메인·프록시·인증서: 대기
 
 Refs: RQ-05, PR-05, DC-15, M-12
 
-진입 기준: Phase 3 완료.
+진입 기준: Phase 3 구현 완료(수동 확인은 사용자 결정으로 Phase 7에서 한다).
 
 - [ ] hosts 파서: 루프백 도메인만, `localhost`·주석 제외.
 - [ ] nginx 설정 읽기(DC-15)와 파서: `include`, `server`, `listen`, `server_name`, `proxy_pass`, `upstream`.
@@ -335,7 +395,7 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
 
 진입 기준: Phase 6 완료.
 
-- [ ] brew로 설치한 앱으로 사용자 Mac에서 M-01~M-14 전체를 실행한다.
+- [ ] brew로 설치한 앱으로 사용자 Mac에서 M-01~M-14 전체를 실행한다. Phase 3 이후 미룬 수동 확인(M-06~M-12)과 DC-17 닫기를 포함한다.
 - [ ] 결과를 수동 검증 문서에 기록하고 실패 항목은 해당 단계로 되돌린다.
 
 기준 검증: 자동 검증 전체 통과.
@@ -345,17 +405,14 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
 
 이 프로젝트의 현재 인계는 이 블록 하나다. 이전 내용은 git 이력에 남는다.
 
-- 현재 작업(2026-11-19): Phase 2 메뉴바 목록 화면까지 완료. 앱은 탐지·목록·숨기기·고정·자동 갱신·설정까지 한다. 멈추기는 Phase 3이다.
-- 작업 위치 전환(2026-11-19): Phase 3부터는 사용자 회사 Mac의 로컬 세션에서 이어 가기로 했다. 멈추기는 실제 macOS 프로세스·launchd로
-  확인해야 하기 때문이다. 클라우드 세션은 이 커밋 뒤로 `main`에 커밋하지 않는다(동시 커밋 충돌 방지).
-  Mac 준비: `git clone`, Rust(rustup), Node 22 이상, Xcode Command Line Tools, doc-driven 스킬. 같은 인계를 ctxbin `portwatch/main`에도 저장했다.
-- 확인된 사실: 사용자 Mac은 macOS 15.6.1, arm64. sudo 없이 root 서비스까지 판별된다. brew 서비스 라벨은 사용자·root 모두 `sh.brew.*`였다.
-- 사용자 결정: macOS 전용, 메뉴바 앱·brew 설치·Spotlight 실행, 문서 기반 개발과 `main`, Tauri, Apple 서명 없이 시작,
-  Phase 1 리뷰 없이 Phase 2 진행, Phase 3부터 Mac 로컬 작업(모두 2026-11-18~19).
-- 다음: Phase 2 리뷰 여부를 사용자에게 묻는다(아직 답 없음). 그다음 Phase 3 멈추기를 시작한다. 먼저 정할 것: DC-13(brew 외 launchd 서비스
-  멈추기 범위), DC-14(Docker 포트 형식, 사용자 Mac 확인), DC-17(root brew 서비스를 관리자 권한으로 멈추는 실제 명령, 사용자 Mac 확인).
+- 현재 작업(2026-11-19): Phase 4 도메인·프록시·인증서 시작. Phase 3 멈추기는 구현과 자동 검증을 마치고 커밋했다.
+  작업 위치는 사용자 Mac 로컬 세션이다(Rust 1.100.0을 mise로 설치).
+- 이번에 정한 것: DC-13(brew 외 launchd 서비스는 멈추지 않음), DC-14(Docker Desktop 형식 확인), DC-22(pm2는 멈추지 않음),
+  사용자 Mac 수동 확인은 Phase 7에서 몰아서 한다(모두 사용자 결정, 2026-11-19).
+- 다음: Phase 4. DC-15(nginx 설정 읽기 방식)를 사용자 Mac에서 확인해 정하고 hosts·nginx 파서와 TLS 확인을 만든다.
+- 미룬 확인: M-06~M-11(Phase 3, 앱은 `npm run build:mac`으로 만든 `target/release/bundle/macos/portwatch.app`), DC-17은 M-08로 닫는다.
 - 로컬 작업 원칙: 시험용으로 직접 띄운 프로세스만 멈춘다. 사용자의 실제 서버·brew 서비스·보안 프로그램은 묻기 전에 건드리지 않는다.
-  관리자 비밀번호는 사용자가 macOS 창에 직접 넣는다(에이전트는 받거나 다루지 않는다).
-- 차단: Phase 5 전에 DC-18(비공개 저장소의 배포 위치)을 사용자가 정해야 한다. Phase 3~4에는 차단 없음.
-- 커밋: 계획 `4384fd2`, Phase 0 `cdab5cf`·`79a25b8`, Phase 1 `b9d2e44`~`964f205`, Phase 2 `326e73a`~`4b56bd5`,
-  그리고 이 인계를 포함한 작업 위치 전환 커밋(`main`).
+  관리자 비밀번호는 사용자가 macOS 창에 직접 넣는다. 실제 실행기 시험 전에는 시험 프로그램을 다시 빌드하고 대상 PID를 먼저 확인한다
+  (2026-11-19 수정 전 빌드로 시험하다 에이전트 세션을 멈춘 일이 있었다).
+- 차단: Phase 5 전에 DC-18(비공개 저장소의 배포 위치)을 사용자가 정해야 한다.
+- 커밋: Phase 3 커밋(이 문서를 담은 커밋, `git log`로 확인). 그 앞은 `cbb08a8`.

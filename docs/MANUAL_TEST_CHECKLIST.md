@@ -10,7 +10,7 @@
 
 자동 테스트는 아래 합성 자료를 쓴다. 형식은 2026-11-18 사용자 Mac 관찰을 따르되,
 사용자 이름·실제 PID·사내 정보·실제 출력 원문은 넣지 않는다. 도메인은 `.test`만 쓴다.
-F-01~F-04·F-06은 한 대의 가상 Mac 상태로 묶어 `crates/portwatch-core/tests/fixtures/mac-15/`에 명령별 출력 파일로 둔다.
+F-01~F-06은 한 대의 가상 Mac 상태로 묶어 `crates/portwatch-core/tests/fixtures/mac-15/`에 명령별 출력 파일로 둔다.
 코어의 `tests/mac_fixtures.rs`가 시나리오별로, 수집기 테스트가 같은 파일로 수집 흐름 전체를 검증한다. 사용자 이름은 `dev`, uid는 501이다.
 
 | ID | 상황 | 들어가는 출력 |
@@ -19,7 +19,7 @@ F-01~F-04·F-06은 한 대의 가상 Mac 상태로 묶어 `crates/portwatch-core
 | F-02 | 사용자 brew 서비스(예: 6379 redis) | netstat·ps·`launchctl print gui/<uid>` (형식은 DC-11 확인 뒤 확정) |
 | F-03 | 터미널 개발 서버 두 개: `zsh → npm → sh → node`(5173), nodemon 아래 node(3000), 서로 다른 `package.json` 이름 | netstat·ps·lsof 작업 폴더 |
 | F-04 | 잡음: launchd가 연 22번, Kerberos 88번(root), 가상의 보안 프로그램(루프백), 개발 도구의 루프백 임시 포트, `.app` 번들 프로세스 | netstat·ps·`launchctl print system` |
-| F-05 | Docker 컨테이너 포트 | 형식은 DC-14 확인 뒤 확정 |
+| F-05 | Docker Desktop 컨테이너 두 개(5432, `0.0.0.0`과 `[::]`; 9000-9001 범위, 루프백)와 컨테이너에 맞지 않는 포트 하나(6443). `com.docker.backend services`가 연다 | netstat·ps·`docker ps --format '{{json .}}'` (형식은 DC-14) |
 | F-06 | `nohup`으로 띄워 부모가 1이 된 node, pm2 데몬 아래 node | netstat·ps·`launchctl print system` |
 | F-07 | hosts `127.0.0.1 shop.example.test`와 nginx `listen 443 ssl`·`server_name`·`proxy_pass http://127.0.0.1:3000`, `upstream` 블록 변형 | hosts·nginx 설정 |
 
@@ -107,7 +107,7 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 대응: RQ-06, PR-01. 예제: F-03.
 
 - [ ] M-03의 감시 도구 아래 서버를 멈춘다.
-- [ ] 확인 창에 대상·관리 주체·실행할 신호가 보인다.
+- [ ] 확인 칸에 대상·관리 주체·실행할 신호(`kill -TERM -<pgid>`)가 보인다. 취소하면 아무것도 바뀌지 않는다.
 - [ ] 멈춘 뒤 감시 도구까지 끝나고 포트가 비며, 서버가 다시 뜨지 않는다.
 - [ ] 띄웠던 터미널 창은 그대로 남는다.
 
@@ -139,7 +139,7 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 대응: RQ-06, PR-01. 예제: F-06.
 
 - [ ] KeepAlive가 켜진 서비스의 프로세스를 터미널에서 직접 kill 한다. 목록이 같은 서비스로 다시 뜬 것을 보여준다.
-- [ ] pm2로 띄운 서버를 앱에서 멈추면 `pm2 stop`으로 멈춰 다시 뜨지 않는다.
+- pm2 항목은 멈추지 않는다(DC-22, 2026-11-19 사용자 결정). 사용자가 pm2를 쓰지 않아 수동 검증하지 않고, 버튼이 없는 것은 합성 자료 F-06으로 확인한다.
 
 통과: 다시 실행된 경우 그 관리 주체가 안내된다. 상태: 미실행.
 
@@ -149,6 +149,7 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 
 - [ ] 시스템·보안 분류 항목과 launchd가 연 포트에는 멈추기 버튼이 없다.
 - [ ] 다른 사용자 계정의 프로세스에는 멈추기 버튼이 없다.
+- [ ] brew가 아닌 launchd 서비스(사용자 LaunchAgent)에는 멈추기 버튼이 없고 보호 이유가 보인다(DC-13).
 
 통과: 보호 항목을 화면에서 멈출 방법이 없다. 상태: 미실행.
 
@@ -156,9 +157,9 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 
 대응: RQ-04·06, DC-14. 예제: F-05.
 
-- [ ] `docker run -p 5432:5432`처럼 포트를 연 컨테이너를 띄운다.
-- [ ] 항목이 컨테이너 이름과 Docker 표시로 보인다.
-- [ ] 멈추면 `docker stop`으로 컨테이너가 멈춘다.
+- [ ] Docker Desktop에서 `docker run -d --name pw-test -p 18080:8080 …`처럼 포트를 연 컨테이너를 띄운다.
+- [ ] 항목이 컨테이너 이름(`pw-test`)과 Docker 표시로 개발 서버에 보인다. 앱 `Docker` 항목에 그 포트가 남지 않는다.
+- [ ] 멈추면 확인 칸에 `docker stop pw-test`가 보이고, 컨테이너가 멈춰(`docker ps -a`에서 Exited) 항목이 사라진다.
 
 통과: 컨테이너가 포트 전달 프로세스가 아니라 컨테이너로 표시되고 멈춘다. 상태: 미실행.
 
