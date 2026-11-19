@@ -411,6 +411,7 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
   `nginx -T`가 일반 권한으로 동작하는지(로그 파일 권한 등) 확인한다. Phase 4.
 - [ ] DC-16: 갱신 주기. 기본값 열린 동안 3초·닫힌 동안 15초로 구현하고 설정에서 고를 수 있게 한다.
   수집 시간(`collectMs`, probe 표 첫 줄)과 CPU 사용을 사용자 Mac에서 측정해 기본값을 확정한다. Phase 2.
+  참고: 2026-11-19 macOS CI 실행기(항목 1개)에서 수집 110 ms.
 - [ ] DC-17: root brew 서비스를 관리자 권한으로 멈추는 실제 명령. 관리자 권한 셸에서 `brew services stop`이 동작하는지,
   아니면 `launchctl bootout system/<라벨>`과 plist 처리를 직접 해야 하는지 Phase 3에서 사용자 Mac으로 확인한다. 검증: M-08.
 - [ ] DC-18: 배포 위치. TBD — 사용자 결정 필요. 비공개 저장소의 Releases는 Homebrew가 인증 없이 받을 수 없다.
