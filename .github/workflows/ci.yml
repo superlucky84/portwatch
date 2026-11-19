@@ -10,6 +10,10 @@ on:
         description: macOS 앱을 빌드해 artifact로 올린다
         type: boolean
         default: true
+      scenario:
+        description: macOS 실행기에서 brew nginx(사용자·root 서비스)와 분리 실행 서버로 탐지 시나리오를 돌린다(Phase 6)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -79,3 +83,53 @@ jobs:
           # zip을 한 번 더 압축하지 않고 그대로 올린다.
           archive: false
           retention-days: 14
+
+  mac-scenario:
+    # 실제 서비스로 탐지·주소·인증서·멈추기 계획을 확인한다. 실행기에는 비밀번호 없는 sudo가 있다.
+    if: github.event_name == 'workflow_dispatch' && inputs.scenario
+    name: macOS / 실제 서비스 시나리오
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - run: cargo build --release -p portwatch-collect --bin portwatch-probe
+      - name: 분리 실행 서버와 nginx 설정
+        run: |
+          nohup node -e "require('http').createServer((q, s) => s.end('ok')).listen(18081, '127.0.0.1')" > "$RUNNER_TEMP/node.log" 2>&1 &
+          brew install nginx
+          conf="$(brew --prefix)/etc/nginx/servers"
+          mkdir -p "$conf"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 7 \
+            -keyout "$RUNNER_TEMP/pw.key" -out "$RUNNER_TEMP/pw.crt" \
+            -subj "/O=portwatch CI/CN=localhost" -addext "subjectAltName=DNS:localhost"
+          cat > "$conf/portwatch.conf" <<EOF
+          server {
+              listen 18443 ssl;
+              server_name localhost;
+              ssl_certificate $RUNNER_TEMP/pw.crt;
+              ssl_certificate_key $RUNNER_TEMP/pw.key;
+              location / { proxy_pass http://127.0.0.1:18081; }
+          }
+          EOF
+      - name: 사용자 brew 서비스
+        run: |
+          brew services start nginx
+          sleep 5
+          target/release/portwatch-probe
+          target/release/portwatch-probe --json > "$RUNNER_TEMP/user.json"
+          node scripts/ci-scenario.mjs user-brew "$RUNNER_TEMP/user.json"
+          brew services stop nginx
+      - name: root brew 서비스
+        run: |
+          sudo brew services start nginx
+          sleep 5
+          target/release/portwatch-probe
+          target/release/portwatch-probe --json > "$RUNNER_TEMP/root.json"
+          node scripts/ci-scenario.mjs root-brew "$RUNNER_TEMP/root.json"
+          sudo brew services stop nginx

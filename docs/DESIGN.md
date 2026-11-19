@@ -133,7 +133,7 @@ brew는 `/opt/homebrew/bin/brew`와 `/usr/local/bin/brew`를 차례로 찾는다
 | 명령 (sudo 없음) | 얻는 정보 | 근거 |
 | --- | --- | --- |
 | `/usr/sbin/netstat -anv -p tcp` | 연결을 기다리는 포트와 PID. root·다른 사용자 포함 | 확인된 사실(2026-11-18) |
-| `/bin/ps -ww -axo pid=,ppid=,pgid=,uid=,tty=,user=,lstart=,command=` | 부모·프로세스 그룹·uid·터미널·사용자·시작 시각·명령줄 | 명령줄 읽기는 확인됨. 열 형식은 Phase 1에서 확인 |
+| `/bin/ps -ww -axo pid=,ppid=,pgid=,uid=,tdev=,user=,lstart=,command=` | 부모·프로세스 그룹·uid·터미널·사용자·시작 시각·명령줄 | 명령줄 읽기는 확인됨. 열 형식은 Phase 1에서 확인. 터미널은 `tty` 대신 `tdev`(Phase 6, 아래) |
 | `/bin/launchctl print system` | root 서비스의 PID → 라벨 표 | 확인된 사실 |
 | `/bin/launchctl print gui/<내 uid>` | 사용자 서비스의 PID → 라벨 표 | 형식은 CI 실행기에서 확인. 실제 사례는 DC-11 |
 | `/bin/launchctl print <도메인>/<라벨>` | plist 경로·실행 파일·인수·작업 폴더 | 확인된 사실. 서비스 항목에만 실행 |
@@ -142,6 +142,10 @@ brew는 `/opt/homebrew/bin/brew`와 `/usr/local/bin/brew`를 차례로 찾는다
 | `/etc/hosts` 읽기 | 루프백을 가리키는 도메인 | Phase 4. 모든 사용자가 읽을 수 있다 |
 | nginx 설정 파일 읽기(`include` 포함) | server·listen·server_name·location·proxy_pass·upstream | Phase 4, DC-15. nginx master가 실행 중일 때만 |
 | 루프백 TLS 연결(rustls, SNI) | 인증서 | Phase 4. https 주소에만, 결과는 60초 동안 재사용 |
+
+터미널 열은 `tty` 대신 `tdev`(주/부 번호)를 읽고 `16/<n>`을 `ttys<nnn>`으로 바꾼다. `tty` 열은 터미널 이름을 찾느라
+사용자 Mac(프로세스 약 1,100개)에서 ps 한 번이 약 330 ms 걸렸고, `tdev`로 바꾸면 약 45 ms였다(2026-11-19 측정, Phase 6).
+터미널 값은 표시용이고 판별에는 쓰지 않는다.
 
 `-ww`가 필요하다: BSD `ps`는 출력이 터미널이 아니면 폭을 79칸으로 잡아 명령줄을 자른다. 사용자가 터미널에서 본 결과가
 잘리지 않은 것은 표준 오류가 터미널이었기 때문이고, 앱에서 실행하면 터미널이 없다.
@@ -183,6 +187,8 @@ listener마다 `ps` 정보로 부모를 따라 올라가 조상 목록을 만든
    처음 나오는 셸이 아닌 프로세스를 최상위로 삼는다. `npm run dev` 아래의 `sh -c vite` 같은 셸은 이 규칙에 영향을 주지 않는다.
 6. 조상에 `.app/Contents/` 경로의 프로세스가 있으면 `app`이다. listener 자신이 앱 프로세스면 가장 위의 앱 프로세스가 최상위이고,
    앱 아래에서 띄운 일반 프로세스(예: 에디터가 띄운 서버)면 가장 아래 앱 프로세스의 바로 아래 프로세스가 최상위다.
+   프레임워크 안의 `Python.app`(`….framework/…/Python.app/Contents/MacOS/Python`, Xcode의 `/usr/bin/python3`와 python.org 설치본)은
+   인터프리터라 앱 프로세스로 보지 않는다(Phase 6. 분리 실행한 `python3 -m http.server`가 "Xcode" 앱으로 보이던 것을 고쳤다).
 7. 뿌리의 부모가 PID 1인데 위 규칙에 맞지 않으면 `detached`다(`nohup`·`&`·`disown`으로 띄운 경우). 뿌리가 최상위다.
 8. 나머지는 `unknown`이다.
 
@@ -190,6 +196,9 @@ listener마다 `ps` 정보로 부모를 따라 올라가 조상 목록을 만든
 코딩 도구가 자기 셸(`zsh -c …`)에서 서버를 띄우면 규칙 5는 터미널 셸 바로 아래의 도구를 최상위로 잡는다. 그러면 서버를 멈출 때
 도구까지 멈춘다(2026-11-19 사용자 Mac에서 Claude Code 아래 서버로 확인). 셸은 작업마다 프로세스 그룹을 만들므로 `npm run dev`는
 npm까지 같은 그룹이라 그대로다.
+
+실행 파일 이름은 명령줄 첫 낱말의 마지막 경로 조각이다. 로그인 셸의 앞 `-`(`-zsh`)는 떼고, `-` 하나뿐이면 그대로 쓴다.
+nginx는 명령줄을 바꿔 쓰므로 따로 읽는다("도메인 연결" 3).
 
 라벨 이름 규칙(`homebrew.mxcl.*`, `sh.brew.*`)이나 `ps` 명령줄 글자로 서비스를 맞추지 않는다(DC-09).
 같은 최상위 프로세스에 속한 listener는 한 Entry로 묶는다.

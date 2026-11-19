@@ -77,7 +77,7 @@ pub fn same_process(runner: &dyn Runner, entry: &Entry) -> bool {
     let args = [
         "-ww",
         "-o",
-        "pid=,ppid=,pgid=,uid=,tty=,user=,lstart=,command=",
+        "pid=,ppid=,pgid=,uid=,tdev=,user=,lstart=,command=",
         "-p",
         pid.as_str(),
     ];
@@ -456,7 +456,7 @@ mod tests {
                 "/bin/ps",
                 "-ww",
                 "-o",
-                "pid=,ppid=,pgid=,uid=,tty=,user=,lstart=,command=",
+                "pid=,ppid=,pgid=,uid=,tdev=,user=,lstart=,command=",
                 "-p",
                 "2100"
             ]
@@ -536,6 +536,40 @@ mod tests {
         assert!(
             signaller.0.lock().unwrap().is_empty(),
             "launchd 서비스는 kill 하지 않는다"
+        );
+    }
+
+    #[test]
+    fn a_process_that_already_ended_is_not_signalled() {
+        let target = entry(ManagerKind::Terminal, PlanHints::default());
+        let runner = Scripted::new("", ok());
+        let signaller = Recorder::default();
+        let (report, _) = run(&runner, &runner, &signaller, &target, false, vec![]);
+        assert_eq!(report.outcome, Outcome::Changed);
+        assert!(signaller.0.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn missing_brew_is_reported_with_the_manual_command() {
+        let target = brew_entry("user");
+        let runner = Scripted::new(
+            &ps_line(2100, "npm run dev"),
+            CommandOutput {
+                success: false,
+                stdout: String::new(),
+                stderr: "env: /opt/homebrew/bin/brew: No such file or directory\n".into(),
+            },
+        );
+        let signaller = Recorder::default();
+        let (report, _) = run(&runner, &runner, &signaller, &target, false, vec![]);
+        assert_eq!(report.outcome, Outcome::Failed);
+        assert_eq!(
+            report.message,
+            "멈추지 못했습니다. env: /opt/homebrew/bin/brew: No such file or directory"
+        );
+        assert_eq!(
+            report.command.as_deref(),
+            Some("/opt/homebrew/bin/brew services stop nginx")
         );
     }
 
@@ -658,7 +692,7 @@ mod tests {
                 &[
                     "-ww",
                     "-o",
-                    "pid=,ppid=,pgid=,uid=,tty=,user=,lstart=,command=",
+                    "pid=,ppid=,pgid=,uid=,tdev=,user=,lstart=,command=",
                     "-p",
                     &pid.to_string(),
                 ],

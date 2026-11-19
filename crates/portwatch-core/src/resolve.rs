@@ -233,10 +233,17 @@ fn exe_path(row: &ProcessRow) -> &str {
     row.command.split_whitespace().next().unwrap_or("")
 }
 
-/// 실행 파일 이름. 로그인 셸의 앞 `-`를 뗀다.
+/// 실행 파일 이름. 로그인 셸의 앞 `-`를 뗀다(`-` 하나뿐이면 그대로 둔다).
 fn exe_name(row: &ProcessRow) -> &str {
-    let path = exe_path(row).trim_start_matches('-');
-    path.rsplit('/').next().unwrap_or(path)
+    let path = exe_path(row);
+    let path = match path.trim_start_matches('-') {
+        "" => path,
+        trimmed => trimmed,
+    };
+    path.rsplit('/')
+        .next()
+        .filter(|name| !name.is_empty())
+        .unwrap_or(path)
 }
 
 fn is_shell(row: &ProcessRow) -> bool {
@@ -247,8 +254,15 @@ fn is_pm2_daemon(row: &ProcessRow) -> bool {
     row.command.contains("PM2") && row.command.contains("God Daemon")
 }
 
+/// 앱 번들 안의 프로세스인지. 프레임워크 안의 `Python.app`(Xcode·python.org의 python3)은 인터프리터라 앱으로 보지 않는다.
 fn is_app_process(row: &ProcessRow) -> bool {
-    row.command.contains(".app/Contents/")
+    row.command.contains(".app/Contents/") && !is_python_launcher(&row.command)
+}
+
+fn is_python_launcher(command: &str) -> bool {
+    command
+        .find("/Python.app/Contents/MacOS/Python")
+        .is_some_and(|at| command[..at].contains(".framework/"))
 }
 
 /// `.app/Contents/` 앞의 가장 바깥 앱 이름.

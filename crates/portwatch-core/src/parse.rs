@@ -11,7 +11,7 @@ pub struct ProcessRow {
     pub ppid: u32,
     pub pgid: u32,
     pub uid: u32,
-    /// 터미널 이름. 터미널이 없으면 `??`.
+    /// 터미널 이름. 터미널이 없으면 `??`. ps의 `tdev`(`16/1`)는 `ttys001`로 바꿔 둔다.
     pub tty: String,
     pub user: String,
     /// `lstart` 다섯 칸을 공백 하나로 이은 값(예: "Wed Nov 18 09:00:00 2026").
@@ -166,11 +166,21 @@ fn ps_row(line: &str) -> Option<ProcessRow> {
         pgid: fields[2].parse().ok()?,
         // macOS의 nobody는 uid가 -2로 나온다. 커널 값(4294967294)과 같게 32비트로 감는다.
         uid: fields[3].parse::<i64>().ok()? as u32,
-        tty: fields[4].to_owned(),
+        tty: tty_name(fields[4]),
         user: fields[5].to_owned(),
         started_at: fields[6..11].join(" "),
         command: command.to_owned(),
     })
+}
+
+/// ps `tdev` 값(주/부 번호)을 터미널 이름으로. macOS의 가상 터미널 `ttysNNN`은 주 번호 16이다.
+/// `tty` 열은 이름을 찾느라 프로세스가 많으면 수백 ms가 걸려서 `tdev`를 읽는다(docs/DESIGN.md "수집").
+/// 이름(`ttys001`, `??`)이 오면 그대로 둔다.
+fn tty_name(field: &str) -> String {
+    match field.split_once('/') {
+        Some(("16", minor)) if minor.parse::<u32>().is_ok() => format!("ttys{minor:0>3}"),
+        _ => field.to_owned(),
+    }
 }
 
 /// `launchctl print system` 또는 `gui/<uid>`의 `services = { … }` 안에서 실행 중인 항목을 읽는다.
@@ -486,5 +496,19 @@ tcp6       0      0  ::1.6379               *.*                    LISTEN       
             lsof_cwd("p2102\nfcwd\nn/Users/dev/work/shop web\np2202\nfcwd\nn/Users/dev/work/api\n");
         assert_eq!(cwd[&2102], "/Users/dev/work/shop web");
         assert_eq!(cwd[&2202], "/Users/dev/work/api");
+    }
+
+    #[test]
+    fn tdev_numbers_become_terminal_names() {
+        assert_eq!(tty_name("16/1"), "ttys001");
+        assert_eq!(tty_name("16/123"), "ttys123");
+        assert_eq!(tty_name("??"), "??");
+        assert_eq!(tty_name("ttys004"), "ttys004");
+        assert_eq!(tty_name("12/0"), "12/0");
+        let (rows, skipped) = ps_rows(
+            "  2101  2100  2101   501 16/7     dev      Wed Nov 18 09:00:00 2026 node a.js",
+        );
+        assert_eq!(skipped, 0);
+        assert_eq!(rows[0].tty, "ttys007");
     }
 }

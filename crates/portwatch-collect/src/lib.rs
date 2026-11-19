@@ -29,7 +29,7 @@ pub const PS: (&str, &[&str]) = (
     &[
         "-ww",
         "-axo",
-        "pid=,ppid=,pgid=,uid=,tty=,user=,lstart=,command=",
+        "pid=,ppid=,pgid=,uid=,tdev=,user=,lstart=,command=",
     ],
 );
 pub const LAUNCHCTL: &str = "/bin/launchctl";
@@ -423,13 +423,21 @@ pub(crate) mod fake {
     #[derive(Default)]
     pub struct FakeRunner {
         pub calls: std::sync::Mutex<Vec<String>>,
+        /// 이 글자가 든 명령은 실패 코드로 끝난다.
         pub fail: Vec<&'static str>,
+        /// 이 글자가 든 명령은 실행 파일이 없다.
+        pub missing: Vec<&'static str>,
     }
 
     impl Runner for FakeRunner {
         fn run(&self, program: &str, args: &[&str]) -> Result<CommandOutput, String> {
             let call = format!("{program} {}", args.join(" "));
             self.calls.lock().unwrap().push(call.clone());
+            if self.missing.iter().any(|needle| call.contains(needle)) {
+                return Err(format!(
+                    "{program}을(를) 실행하지 못했습니다: No such file or directory"
+                ));
+            }
             if self.fail.iter().any(|needle| call.contains(needle)) {
                 return Ok(CommandOutput {
                     success: false,
@@ -633,7 +641,7 @@ mod tests {
                 .to_owned()
         ));
         assert!(calls.contains(
-            &"/bin/ps -ww -axo pid=,ppid=,pgid=,uid=,tty=,user=,lstart=,command=".to_owned()
+            &"/bin/ps -ww -axo pid=,ppid=,pgid=,uid=,tdev=,user=,lstart=,command=".to_owned()
         ));
     }
 
@@ -670,6 +678,95 @@ mod tests {
             redis.manager.kind,
             ManagerKind::Detached,
             "사용자 서비스 목록이 없으면 분리 실행으로 보인다"
+        );
+    }
+
+    #[test]
+    fn missing_core_commands_leave_warnings_and_no_invented_entries() {
+        let runner = FakeRunner {
+            missing: vec!["/usr/sbin/netstat", "/bin/ps"],
+            ..FakeRunner::default()
+        };
+        let snapshot = collect_with(&runner, &files(), &FakeTls, &env());
+        assert!(snapshot.entries.is_empty());
+        assert!(
+            snapshot
+                .warnings
+                .iter()
+                .any(|w| w.contains("/usr/sbin/netstat을(를) 실행하지 못했습니다")),
+            "{:?}",
+            snapshot.warnings
+        );
+        assert!(snapshot.warnings.iter().any(|w| w.contains("/bin/ps")));
+    }
+
+    #[test]
+    fn missing_docker_cli_keeps_the_ports_with_the_docker_app() {
+        let runner = FakeRunner {
+            missing: vec!["Docker.app/Contents/Resources/bin/docker"],
+            ..FakeRunner::default()
+        };
+        let snapshot = collect_with(&runner, &files(), &FakeTls, &env());
+        assert_eq!(
+            snapshot.warnings,
+            ["Docker 컨테이너 목록을 읽지 못했습니다. /Applications/Docker.app/Contents/Resources/bin/docker을(를) 실행하지 못했습니다: No such file or directory"]
+        );
+        assert!(snapshot
+            .entries
+            .iter()
+            .all(|e| e.manager.kind != ManagerKind::Docker));
+        let docker = snapshot
+            .entries
+            .iter()
+            .find(|e| e.listeners.iter().any(|l| l.port == 5432))
+            .unwrap();
+        assert_eq!(docker.title, "Docker");
+    }
+
+    #[test]
+    fn unreadable_hosts_and_nginx_files_become_warnings() {
+        let mut files = files();
+        files.0.remove("/etc/hosts");
+        files.0.remove("/opt/homebrew/etc/nginx/nginx.conf");
+        let snapshot = collect_with(&FakeRunner::default(), &files, &FakeTls, &env());
+        assert_eq!(
+            snapshot.warnings,
+            [
+                "hosts 파일(/etc/hosts)을 읽지 못했습니다.",
+                "nginx 설정을 읽지 못했습니다: /opt/homebrew/etc/nginx/nginx.conf"
+            ]
+        );
+        assert!(snapshot.entries.iter().all(|e| e.domains.is_empty()));
+        assert_eq!(snapshot.entries.len(), 19, "주소를 못 읽어도 항목은 그대로");
+    }
+
+    #[test]
+    fn certificates_that_cannot_be_read_are_shown_as_errors() {
+        struct Refusing;
+        impl tls::TlsProbe for Refusing {
+            fn peer_certificate(
+                &self,
+                _: std::net::IpAddr,
+                _: u16,
+                _: &str,
+            ) -> Result<Vec<u8>, String> {
+                Err("인증서를 읽지 못했습니다: Connection refused".to_owned())
+            }
+        }
+        let snapshot = collect_with(&FakeRunner::default(), &files(), &Refusing, &env());
+        let cert = snapshot
+            .entries
+            .iter()
+            .flat_map(|e| &e.domains)
+            .find_map(|d| d.tls.as_ref())
+            .unwrap();
+        assert_eq!(
+            cert.error.as_deref(),
+            Some("인증서를 읽지 못했습니다: Connection refused")
+        );
+        assert!(
+            snapshot.warnings.is_empty(),
+            "인증서 오류는 주소 옆에만 보인다"
         );
     }
 
