@@ -188,7 +188,8 @@ find ~/Library/Caches/Homebrew -user root 2>/dev/null
 - [ ] 시험 뒤 hosts와 nginx 설정을 원래대로 돌린다(앱은 이 파일들을 바꾸지 않는다).
 
 통과: 도메인에서 실제 개발 서버까지 연결이 보인다. 상태: 일부 통과(2026-11-20, 사용자 Mac). 지금 쓰는 nginx 설정의 경로별 주소와 "nginx 경유"를 확인했다.
-hosts·mkcert 도메인 항목은 아직 결과를 받지 않았다.
+hosts·mkcert 도메인 항목은 사용자 결정(2026-11-20)으로 건너뛰었다. 도메인·인증서는 합성 자료(F-07), 실제 TLS 서버 테스트,
+사용자 Mac의 시험 nginx(2026-11-19, 자체 서명 인증서)와 macOS CI 시나리오(run 44654747364)로 확인했다.
 
 ### M-13 — brew 설치·Spotlight·자동 실행
 
