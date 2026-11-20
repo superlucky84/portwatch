@@ -13,10 +13,15 @@ on:
       scenario:
         description: macOS 실행기에서 brew nginx(사용자·root 서비스)와 분리 실행 서버로 탐지 시나리오를 돌린다(Phase 6)
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
+
+# 같은 브랜치·PR에 새 푸시가 오면 이전 실행을 멈춘다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   core:
@@ -39,8 +44,8 @@ jobs:
       - run: npm run test:ui
 
   mac:
-    # macOS 실행 시간은 Linux보다 훨씬 비싸서 수동 실행에서만 돌린다(DC-10).
-    if: github.event_name == 'workflow_dispatch' && inputs.build_mac
+    # 공개 저장소라 macOS 실행기도 무료여서 푸시·PR마다 돌린다. 수동 실행에서는 입력으로 끌 수 있다(DC-10).
+    if: github.event_name != 'workflow_dispatch' || inputs.build_mac
     name: macOS / 앱 빌드
     runs-on: macos-15
     timeout-minutes: 40
@@ -86,7 +91,7 @@ jobs:
 
   mac-scenario:
     # 실제 서비스로 탐지·주소·인증서·멈추기 계획을 확인한다. 실행기에는 비밀번호 없는 sudo가 있다.
-    if: github.event_name == 'workflow_dispatch' && inputs.scenario
+    if: github.event_name != 'workflow_dispatch' || inputs.scenario
     name: macOS / 실제 서비스 시나리오
     runs-on: macos-15
     timeout-minutes: 30

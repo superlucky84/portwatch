@@ -44,7 +44,7 @@
 | ../src-tauri/ | Tauri 셸: 트레이 아이콘·창·화면에 노출하는 고정 명령 | Phase 0: 아이콘·팝오버 창·종료 |
 | ../ui/ | 메뉴바 팝오버 화면 (HTML/CSS/JS) | Phase 0: 빈 목록 화면 |
 | ../scripts/ | 문서 검사·아이콘 생성, Mac 출력 형식 표본 수집 등 개발 스크립트 | Phase 0: 문서 검사·아이콘. 표본 수집은 Phase 1 |
-| ../.github/workflows/ci.yml | Linux 검사·테스트, 수동 macOS 빌드 | Phase 0 |
+| ../.github/workflows/ci.yml | Linux 검사·테스트, macOS 빌드·시나리오(푸시·PR마다) | Phase 0 |
 
 ## 요구사항의 상태
 
@@ -148,6 +148,7 @@ location 경로별로 루프백 포트에 넘기는 모양이다(도메인 이�
 - tap은 별도 공개 저장소 `superlucky84/homebrew-tap`으로 둔다. 설치 명령이 `brew install --cask superlucky84/tap/portwatch` 한 줄이 된다.
 - portwatch 저장소를 공개로 바꾼다. README는 영문으로 쓰고, 계획 문서 4종은 한국어로 둔다. 배포는 tap 저장소 방식(DC-18)을 유지한다.
 - 새 버전 배포 절차를 저장소 문서에 남긴다(README "Releasing", DESIGN "배포").
+- 공개 저장소라 macOS 실행기가 무료이므로 macOS CI를 main 푸시·PR마다 자동으로 돌린다(DC-10).
 
 ## 미결정 사항
 

@@ -508,7 +508,10 @@ README "Releasing"에 같은 절차가 영문으로 있다. 첫 준비(tap 저�
 - [x] DC-09: 서비스는 이름 규칙이나 명령줄 글자가 아니라 launchd의 PID와 plist 실행 경로로 맞춘다.
   근거: 라벨이 `homebrew.mxcl.*`가 아니라 `sh.brew.nginx`였고, nginx는 명령줄을 바꿔 쓰며,
   sudo 없는 `brew services list`는 실행 중인 root 서비스를 `none`으로 보였다. 검증: Phase 1 판별 테스트.
-- [x] DC-10: CI는 Linux 작업(검사·코어 테스트)을 모든 main 푸시와 PR에서 돌리고, macOS 빌드는 수동 실행(`workflow_dispatch`)에서만 돌린다.
+- [x] DC-10: CI는 Linux 작업(검사·테스트·화면 테스트), macOS 앱 빌드, macOS 실제 서비스 시나리오를 모든 main 푸시와 PR에서 돌린다.
+  수동 실행(`workflow_dispatch`)에서는 macOS 작업을 입력(`build_mac`, `scenario`)으로 끌 수 있다. 같은 ref에 새 푸시가 오면 이전 실행을 멈춘다.
+  2026-11-20 사용자 결정: 저장소를 공개로 바꿔 표준 실행기가 무료가 됐으므로 macOS 작업도 자동으로 돌린다.
+  이전 결정(2026-11-18, 비공개일 때): macOS 빌드는 비용 때문에 수동 실행에서만 돌렸다.
   근거(2026-11-18 조사): 표준 macOS 실행기는 분당 약 $0.062로 Linux(약 $0.006)의 10배 정도다. 무료 한도는 자료마다 달라 확인하지 못했다.
   Phase 0 실측: 캐시 없는 macOS 작업 전체가 약 1분 45초였다(run 44276588647). 코드가 커지면 다시 잰다.
   사용자가 비용 기준을 바꾸면 이 결정을 다시 연다. 검증: Phase 0 CI 실행 기록.

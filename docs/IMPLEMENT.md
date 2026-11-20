@@ -28,7 +28,7 @@
 | `npm run check:app` | 셸 크레이트 `cargo clippy -D warnings` | macOS CI. Linux는 WebKitGTK 개발 패키지가 있어야 한다 |
 | `npm test` | `cargo test -p portwatch-core -p portwatch-collect` (합성 자료 테스트)와 배포 스크립트 테스트(`node --test`, Phase 5) | 이 개발 환경, CI(Linux) |
 | `npm run test:ui` | 가짜 스냅샷으로 화면 테스트 (Playwright) | 이 개발 환경, CI(Linux) |
-| `npm run build:mac` | `tauri build --bundles app`으로 .app 생성 | macOS CI(수동 실행), 사용자 Mac |
+| `npm run build:mac` | `tauri build --bundles app`으로 .app 생성 | macOS CI(main 푸시·PR, 수동 실행), 사용자 Mac |
 
 ## Phase 0 — 프로젝트 부트스트랩: 완료
 
@@ -571,6 +571,7 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
 - 이번에 정한 것(2026-11-20, 사용자): M-09 해당 없음, M-12 hosts·mkcert 항목 건너뜀. DC-17은 M-08로 닫았다.
   tap 저장소는 별도 공개 저장소 `homebrew-tap`으로 유지(설치 명령이 한 줄이 되는 방식)하고 에이전트가 만들었다.
   portwatch 저장소를 공개로 바꾸기로 했다(전환은 사용자). README를 영문으로 다시 쓰고 새 버전 배포 절차를 README·DESIGN에 적었다.
+  공개 뒤 macOS CI(앱 빌드·실제 서비스 시나리오)를 main 푸시·PR마다 자동으로 돌리게 바꿨다(DC-10, 사용자 결정).
   공개 전에 커밋 작성자(Mac 계정명·호스트명)를 `superlucky84 <superlucky84@users.noreply.github.com>`로 바꿔 이력을 다시 썼다(사용자 결정).
   이 문서의 커밋 해시는 새 해시로 고쳤다. GitHub Actions run 기록에는 옛 해시가 남는다.
 - 다음: 계획된 단계는 없다. 새 요청은 요구사항 문서에 먼저 적는다. 새 버전은 세 버전 파일을 올리고 `v<버전>` 태그를 푸시한다(README "배포하기").

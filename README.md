@@ -103,8 +103,9 @@ npm run build:mac
 
 ### Running an app built by CI
 
-macOS CI runs only on manual dispatch because macOS minutes are expensive. In the Actions tab, run **CI → Run workflow**
-to get a `portwatch-macos-arm64` artifact (zip) that contains `portwatch.app` and `portwatch-probe`.
+CI builds the macOS app and runs a real-service detection scenario on every push to `main` and every pull request.
+Each run uploads a `portwatch-macos-arm64` artifact (zip) that contains `portwatch.app` and `portwatch-probe`.
+You can also start a run from the Actions tab with **CI → Run workflow**.
 
 Downloaded apps are blocked on first launch; allow them as described in [Install](#install). For an app you built yourself,
 you can remove the quarantine flag instead:

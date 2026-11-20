@@ -36,7 +36,8 @@ Phase 0 created this layout. Do not describe commands as available before they e
 - Run npm run check (cargo fmt, clippy with warnings denied, document links and IDs) and npm test for
   every change. Run npm run check:app for src-tauri changes; on Linux it needs the WebKitGTK development packages.
   Run npm run test:ui (Playwright with a fake window.__TAURI__) for ui/ changes.
-- macOS CI builds run only by manual dispatch because macOS minutes cost about ten times Linux minutes.
+- macOS CI (app build and real-service scenario) runs on every push to main and every PR; the repository is public,
+  so standard runners are free (user decision, 2026-11-20). Manual dispatch can turn the macOS jobs off.
 - Behavior that only macOS shows must be verified on the user's Mac or macOS CI; record which one.
 
 ## Safety
