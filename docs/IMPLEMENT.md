@@ -14,7 +14,7 @@
 - 구현 완료(2026-11-19): Phase 3 멈추기. 코드·자동 테스트는 끝났고 사용자 Mac 수동 검증(M-06~M-11)은 Phase 7로 미뤘다(사용자 결정).
 - 구현 완료(2026-11-19): Phase 4 도메인·프록시·인증서. 사용자 Mac 수동 검증(M-12)은 Phase 7에서 한다.
 - 구현 완료(2026-11-19): Phase 5 배포 workflow·cask·README. tap 저장소와 `TAP_TOKEN` 준비(사용자), 첫 배포 실행, M-13·M-14가 남았다.
-- 구현 완료(2026-11-19): Phase 6 Test Hardening. macOS CI 실제 서비스 시나리오 job은 만들었고 실행(푸시·수동 실행)이 남았다.
+- 완료(2026-11-20): Phase 6 Test Hardening. macOS CI 실제 서비스 시나리오도 통과했다(run 44654747364).
 
 상세 계약을 바꾸면 요구사항·설계·단계·수동 기준을 같은 작업에서 갱신한다.
 미구현 명령이나 테스트를 이미 쓸 수 있는 것으로 안내하지 않는다.
@@ -462,16 +462,16 @@ Files:
 - `scripts/release.mjs` (added)
 - `scripts/release.test.mjs` (added)
 
-## Phase 6 — Test Hardening: 구현 완료(macOS CI 시나리오 실행 대기)
+## Phase 6 — Test Hardening: 완료
 
 Refs: RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, DC-12, DC-16
 
 진입 기준: Phase 5 구현 완료(tap 준비와 첫 배포는 사용자 준비를 기다린다).
 
-- [ ] macOS CI에서 실제 서비스를 띄워 probe로 판별하는 시나리오. `ci.yml`의 `mac-scenario` job(수동 실행, `scenario` 입력)과
+- [x] macOS CI에서 실제 서비스를 띄워 probe로 판별하는 시나리오. `ci.yml`의 `mac-scenario` job(수동 실행, `scenario` 입력)과
   확인 스크립트 `scripts/ci-scenario.mjs`(테스트 2개)를 만들었다: 분리 실행 node(18081), brew nginx를 사용자 서비스로 띄워 확인한 뒤
   root 서비스(`sudo`, 실행기는 비밀번호 없음)로 다시 띄워 확인. nginx `servers/`에 18443 TLS → 18081 설정을 넣어 주소·인증서·nginx 경유도 본다.
-  실행은 원격 푸시와 수동 실행이 필요해 사용자에게 묻는다.
+  2026-11-20 사용자가 수동 실행했고 통과했다(아래 CI 기록).
 - [x] IPv6 전용·특정 주소·링크 로컬 주소에만 연 포트, `tcp46`, 같은 포트를 여러 프로세스가 연 경우(같은 부모의 일꾼은 한 항목, 다른 터미널은 따로)
   (`tests/hardening.rs`).
 - [x] 수집 중 프로세스가 끝나는 경합(포트는 남기고 멈추기 계획은 없음), 멈추기 직전 PID 재사용(기존 테스트)과 이미 끝난 프로세스(`Changed`로 신호 없음).
@@ -500,7 +500,16 @@ Refs: RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, DC-12, DC-16
   - hosts의 루프백 이름은 80·443을 직접 연 모든 항목에 붙는다(어느 서버가 어떤 이름을 받는지 알 수 없다).
   - TLS 확인은 nginx의 https 주소와 443을 직접 연 서버만 한다. 다른 포트의 TLS 개발 서버는 확인하지 않는다.
   - Docker는 Docker Desktop만, 프로세스 관리자는 pm2를 멈추지 않는다(DC-14·DC-22).
-  - 실제 macOS 서비스로 도는 시나리오는 macOS CI job으로 만들었지만 아직 실행하지 않았다.
+
+CI 기록(2026-11-20, run 44654747364, 커밋 `514d3ef`, 사용자가 `build_mac`·`scenario`를 켜고 수동 실행): 세 job 모두 성공.
+
+- macOS / 실제 서비스 시나리오(macOS 15.8.2 arm64 실행기, 약 41초, brew nginx 1.31.8): `user-brew`·`root-brew` 확인 모두 통과, 경고 0개.
+  사용자 서비스는 `brew 서비스(user)`, root 서비스는 `brew 서비스(system) root`로 판별됐고, 두 경우 모두 nginx 항목에
+  `https://localhost:18443/ → :18081`과 인증서(발급자 `portwatch CI`, "14일 안에 만료" 경고), 분리 실행 node 항목에 같은 주소가
+  "nginx 경유"로 붙었다. 수집 시간은 129~216 ms(항목 3개).
+- macOS / 앱 빌드(약 2분 20초): `codesign -dv`는 `Identifier=io.github.superlucky84.portwatch`, `Format=app bundle with Mach-O thin (arm64)`,
+  `Signature=adhoc`, `TeamIdentifier=not set`. artifact `portwatch-macos-arm64`.
+- Linux / 코어 검사와 테스트(약 3분 40초) 통과.
 
 Files:
 - `.github/workflows/ci.yml` (modified)
@@ -534,12 +543,12 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
   작업 위치는 사용자 Mac 로컬 세션이다(Rust 1.100.0을 mise로 설치).
 - 이번에 정한 것(2026-11-19): DC-13·DC-14·DC-15·DC-18·DC-21·DC-22, "사용자 Mac 수동 확인은 Phase 7에서 몰아서"(사용자 결정).
 - 다음(사용자에게 묻고 할 일):
-  1. 로컬 `main`을 원격에 푸시하고 CI를 수동 실행해 `mac-scenario`(실제 서비스 시나리오)와 `mac`(앱 빌드)을 확인한다(macOS 실행 시간 비용).
+  1. (완료 2026-11-20) CI 수동 실행: `mac-scenario`·`mac` 통과(run 44654747364).
   2. 공개 저장소 `superlucky84/homebrew-tap`과 `TAP_TOKEN` secret을 준비하고 `v0.1.0` 태그로 첫 배포를 한다(README "배포하기").
   3. Phase 7: 사용자 Mac에서 M-01~M-14. Phase 3 이후 미룬 M-06~M-14와 DC-17(M-08) 닫기를 포함한다.
 - 로컬 작업 원칙: 시험용으로 직접 띄운 프로세스만 멈춘다. 사용자의 실제 서버·brew 서비스·보안 프로그램은 묻기 전에 건드리지 않는다.
   관리자 비밀번호는 사용자가 macOS 창에 직접 넣는다. 실제 실행기 시험 전에는 시험 프로그램을 다시 빌드하고 대상 PID를 먼저 확인한다
   (2026-11-19 수정 전 빌드로 시험하다 에이전트 세션을 멈춘 일이 있었다). nginx 시험은 scratchpad 설정과 높은 포트로 따로 띄운다.
   원격 푸시·workflow 실행·저장소 생성은 사용자에게 묻고 한다.
-- 차단: 없음. 위 1·2는 사용자 확인을 기다린다.
-- 커밋: Phase 6 커밋(이 문서를 담은 커밋, `git log`로 확인). 그 앞은 `048a1ca`(Phase 5). 로컬 `main`은 원격보다 앞서 있다(푸시 전).
+- 차단: 없음. 위 2는 사용자 준비를 기다린다.
+- 커밋: CI 기록 커밋(이 문서를 담은 커밋, `git log`로 확인). 그 앞은 `514d3ef`(Phase 6, 원격에 푸시함).
