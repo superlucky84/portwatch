@@ -535,7 +535,7 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
   plist도 지워졌다. 멈춘 뒤 `/opt/homebrew`에 root 소유 파일이 없었다. 소유자 변경은 `sudo brew services start`가 만들고 앱은 되돌리지 않는다.
 - [x] DC-18: 코드는 비공개로 두고 빌드한 앱 zip만 공개 저장소 `superlucky84/homebrew-tap`의 Releases에 올린다("배포" 절).
   2026-11-19 사용자 결정(제안한 (b)안). 비교한 대안: (a) portwatch 저장소 공개(가장 단순하지만 코드가 공개됨),
-  (c) brew 없이 직접 빌드해 설치(RQ-08과 다름). tap 저장소 생성과 `TAP_TOKEN` secret 등록은 사용자가 한다. 검증: M-13.
+  (c) brew 없이 직접 빌드해 설치(RQ-08과 다름). tap 저장소는 2026-11-20 사용자 동의로 에이전트가 만들었고, `TAP_TOKEN` secret은 사용자가 등록했다. 검증: M-13.
 - [x] DC-19: 대상 CPU는 Apple Silicon(`aarch64-apple-darwin`)만이다. 2026-11-18 사용자 Mac의 `uname -m`이 `arm64`였다.
   Intel Mac 사용자에게 배포하기로 하면 universal 빌드를 추가한다. Intel brew 경로(`/usr/local`) 판별은 Phase 6에서 합성 자료로만 확인한다.
 - [x] DC-20: 화면은 프레임워크 없이 ES 모듈로 만든다(docatlas 화면과 같은 방식). 2026-11-19 Phase 2 시작 때 정했다.

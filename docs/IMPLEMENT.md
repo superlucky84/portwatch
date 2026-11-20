@@ -13,7 +13,7 @@
 - 완료(2026-11-19): Phase 2 메뉴바 목록 화면. 사용자 Mac에서 목록·접기·숨기기·고정·자동 갱신·아이콘 숫자·열기·복사·설정을 확인했다.
 - 완료(2026-11-20): Phase 3 멈추기. 사용자 Mac에서 M-06~M-08·M-10·M-11 통과, M-09 해당 없음(사용자 결정), DC-17 닫음.
 - 완료(2026-11-20): Phase 4 도메인·프록시·인증서. M-12는 경로별 주소 통과, hosts·mkcert 항목은 사용자 결정으로 건너뜀.
-- 구현 완료(2026-11-19): Phase 5 배포 workflow·cask·README. tap 저장소와 `TAP_TOKEN` 준비(사용자), 첫 배포 실행, M-13·M-14가 남았다.
+- 구현 완료(2026-11-20): Phase 5 배포. 첫 배포 v0.1.0을 올렸다(Release run 44676203096). 사용자 Mac의 M-13·M-14가 남았다.
 - 완료(2026-11-20): Phase 6 Test Hardening. macOS CI 실제 서비스 시나리오도 통과했다(run 44654747364).
 
 상세 계약을 바꾸면 요구사항·설계·단계·수동 기준을 같은 작업에서 갱신한다.
@@ -417,7 +417,7 @@ Files:
 - `ui/style.css` (modified)
 - `ui/view.js` (modified)
 
-## Phase 5 — 배포: 구현 완료(사용자 준비·확인 대기)
+## Phase 5 — 배포: 구현 완료(M-13·M-14 대기)
 
 Refs: RQ-08, RQ-09, DC-02, DC-18, DC-19, DC-21, M-13, M-14
 
@@ -429,10 +429,10 @@ DC-21 닫음(README와 cask 안내로 허용 절차, 격리 표시는 지우지 
 - [x] 버전 태그를 푸시하면 macOS CI가 ad-hoc 서명한 앱을 빌드해 zip으로 올리는 workflow(`.github/workflows/release.yml`).
   수동 실행은 리허설(빌드·artifact), `publish`를 켜면 올린다. 버전 확인·cask 만들기는 `scripts/release.mjs`(테스트 3개).
 - [x] cask 틀(`packaging/homebrew/portwatch.rb.in`): arm64·macOS 15 이상, `uninstall quit`, `zap`, Gatekeeper `caveats`.
-- [ ] `superlucky84/homebrew-tap` 저장소와 `TAP_TOKEN` secret(사용자가 만든다).
+- [x] `superlucky84/homebrew-tap` 저장소(2026-11-20, 사용자 동의로 에이전트가 `gh`로 만듦, README 첫 커밋)와 `TAP_TOKEN` secret(사용자 등록).
 - [x] Gatekeeper 처리(DC-21)와 README 설치 안내.
 - [x] 업데이트 방법(`brew upgrade --cask portwatch`) README 안내.
-- [ ] 첫 배포: 태그 푸시로 workflow를 실행하고 산출물의 서명 상태를 기록한다.
+- [x] 첫 배포: 태그 푸시로 workflow를 실행하고 산출물의 서명 상태를 기록한다.
 - [ ] 사용자 Mac: M-13, M-14. 사용자 결정(2026-11-19)으로 Phase 7에서 확인한다.
 
 기준 검증: workflow를 수동 실행으로 리허설하고 산출물의 서명 상태(`codesign -dv`)를 기록한다.
@@ -450,6 +450,14 @@ DC-21 닫음(README와 cask 안내로 허용 절차, 격리 표시는 지우지 
   Homebrew가 권하는 `:sequoia`로 고친 뒤 위반 없음.
 - 아직 확인하지 않은 것: GitHub에서의 workflow 실행(tap 저장소와 `TAP_TOKEN`이 있어야 올리기까지 된다), brew 설치·업데이트(M-13),
   Gatekeeper 허용과 회사 보안 프로그램(M-14).
+
+검증 기록(2026-11-20, macOS CI, 첫 배포):
+
+- 사용자가 `homebrew-tap` 저장소 생성을 승인했고(에이전트가 `gh repo create`), fine-grained 토큰을 `TAP_TOKEN`으로 등록했다.
+- `v0.1.0` 태그 푸시로 Release workflow run 44676203096이 성공했다(약 2분 30초). check·test(cargo 104개, node 5개)·check:app·build:mac 통과.
+  `codesign --verify`는 `valid on disk`, `Format=app bundle with Mach-O thin (arm64)`, `Signature=adhoc`, `TeamIdentifier=not set`.
+- tap 저장소에 릴리스 `portwatch-v0.1.0`(zip 4,131,748 바이트)과 `Casks/portwatch.rb` 커밋("portwatch 0.1.0")이 생겼다.
+  로그인 없이 zip을 내려받을 수 있었고 SHA-256(`c0579d1f…03c0`)이 cask 값과 같았다(사용자 Mac).
 
 Files:
 - `.github/workflows/release.yml` (added)
@@ -541,7 +549,7 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
   다시 시험해 취소·멈춤 모두 통과했다. 멈춘 뒤 `/opt/homebrew`에 root 소유 파일은 없었고, 사용자 캐시의 root 소유 `tool-selection` 파일 2개는
   터미널의 `sudo brew services start`(11:14)가 만든 것이었다(앱 수정 빌드는 11:17). 정리 절차에 캐시 확인을 더했다.
 - 건너뜀(사용자 결정): M-12의 hosts·mkcert 항목. 도메인·인증서는 자동 테스트, 시험 nginx, CI 시나리오로 확인했다.
-- 남은 것: 첫 배포 뒤 M-13·M-14.
+- 남은 것: M-13·M-14(첫 배포 v0.1.0 완료, 2026-11-20).
 - [ ] 결과를 수동 검증 문서에 기록하고 실패 항목은 해당 단계로 되돌린다.
 
 기준 검증: 자동 검증 전체 통과.
@@ -551,16 +559,14 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
 
 이 프로젝트의 현재 인계는 이 블록 하나다. 이전 내용은 git 이력에 남는다.
 
-- 현재 작업(2026-11-20): Phase 0~4·6 완료. Phase 5는 첫 배포만 남았고, Phase 7은 첫 배포 뒤 M-13·M-14만 남았다.
+- 현재 작업(2026-11-20): Phase 0~4·6 완료. Phase 5는 첫 배포 v0.1.0까지 마쳤고(Release run 44676203096), Phase 5·7 모두 M-13·M-14만 남았다.
   작업 위치는 사용자 Mac 로컬 세션이다(Rust 1.100.0을 mise로 설치).
 - 이번에 정한 것(2026-11-20, 사용자): M-09 해당 없음, M-12 hosts·mkcert 항목 건너뜀. DC-17은 M-08로 닫았다.
+  tap 저장소는 별도 공개 저장소 `homebrew-tap`으로 유지(설치 명령이 한 줄이 되는 방식)하고 에이전트가 만들었다.
 - 다음:
-  1. 사용자 준비: 공개 저장소 `superlucky84/homebrew-tap`(원하면 에이전트가 `gh`로 만든다)과 그 저장소 전용 fine-grained 토큰을
-     portwatch secret `TAP_TOKEN`으로 등록(README "배포하기").
-  2. `v0.1.0` 태그 푸시로 첫 배포, Release workflow 결과 기록.
-  3. M-13(brew 설치·Spotlight·자동 실행·업데이트), M-14(Gatekeeper 허용·회사 보안 프로그램). `/Applications/portwatch.app`의
+  1. M-13(brew 설치·Spotlight·자동 실행·업데이트), M-14(Gatekeeper 허용·회사 보안 프로그램). `/Applications/portwatch.app`의
      로컬 복사본은 cask 설치 전에 지운다.
 - 로컬 작업 원칙: 시험용으로 직접 띄운 프로세스만 멈춘다. 사용자의 실제 서버·brew 서비스·보안 프로그램은 묻기 전에 건드리지 않는다.
   관리자 비밀번호는 사용자가 macOS 창에 직접 넣는다. 원격 푸시·workflow 실행·저장소 생성은 사용자에게 묻고 한다.
-- 차단: 없음. 첫 배포는 사용자 준비를 기다린다.
+- 차단: 없음. M-13·M-14는 사용자 Mac에서 사용자가 확인한다.
 - 커밋: 최신은 이 문서를 담은 커밋(`git log`로 확인). 원격에 푸시함.
