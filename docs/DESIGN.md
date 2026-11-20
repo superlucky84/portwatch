@@ -435,8 +435,8 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
 
 ## 배포
 
-- 코드 저장소(`superlucky84/portwatch`)는 비공개로 두고, 빌드한 앱 zip만 공개 저장소 `superlucky84/homebrew-tap`의
-  Releases에 올린다(DC-18). 같은 tap 저장소의 `Casks/portwatch.rb`가 그 zip을 가리킨다.
+- 빌드한 앱 zip은 공개 저장소 `superlucky84/homebrew-tap`의 Releases에 올린다(DC-18). 같은 tap 저장소의 `Casks/portwatch.rb`가
+  그 zip을 가리킨다. 코드 저장소(`superlucky84/portwatch`)는 2026-11-20 사용자 결정으로 공개로 바꾸지만 이 방식은 그대로 둔다.
   설치 명령은 `brew install --cask superlucky84/tap/portwatch`, 업데이트는 `brew upgrade --cask portwatch`다.
 - `/Applications`에 설치되므로 Spotlight 검색은 따로 만들지 않는다.
 - 배포 workflow(`.github/workflows/release.yml`, Phase 5):
@@ -458,6 +458,23 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
   README와 cask `caveats`로 이 허용 절차를 안내하고, cask에서 격리 표시를 지우지 않는다(DC-21).
 - Mac에서 직접 빌드해 설치한 앱에는 격리 표시가 붙지 않아 이 절차가 필요 없다.
 - 회사 보안 에이전트가 서명 없는 앱을 막을 수 있다. 사용자 Mac에서는 막지 않았다(M-14, 2026-11-20).
+
+### 새 버전 배포 절차
+
+README "Releasing"에 같은 절차가 영문으로 있다. 첫 준비(tap 저장소, `TAP_TOKEN`)는 2026-11-20에 마쳤다.
+`TAP_TOKEN`이 만료되면 같은 권한(tap 저장소 하나, Contents 읽기·쓰기)으로 새로 만들어 같은 이름으로 다시 등록한다.
+
+1. `main`에서 `npm run check`와 `npm test`가 통과하는지 확인한다. `ui/`를 바꿨으면 `npm run test:ui`, `src-tauri/`를 바꿨으면
+   `npm run check:app`도 돌린다.
+2. 버전을 세 곳에 같게 올린다: `npm version <버전> --no-git-tag-version`(`package.json`·`package-lock.json`),
+   `Cargo.toml`의 `[workspace.package]` `version`, `src-tauri/tauri.conf.json`의 `version`.
+   `cargo metadata --format-version 1 > /dev/null`로 `Cargo.lock`을 갱신하고 `node scripts/release.mjs check v<버전>`으로 확인한다.
+3. 버전 변경을 커밋해 `main`에 푸시하고, `git tag -a v<버전> -m "portwatch <버전>"` 뒤 `git push origin v<버전>`.
+4. Release workflow(약 3분)가 끝나면 tap 저장소에 `portwatch-v<버전>` 릴리스와 `Casks/portwatch.rb` 커밋이 생겼는지 본다.
+   설치한 Mac에서는 `brew update && brew upgrade --cask portwatch`로 받는다.
+5. 올리지 않고 확인만 하려면 Actions에서 Release를 수동 실행한다(`publish` 끔, 빌드와 artifact까지).
+6. tap 저장소에 릴리스를 만든 뒤 실패하면, 다시 실행해도 같은 이름의 릴리스가 있어 실패한다. 그 릴리스를 지우고 다시 돌리거나
+   고친 뒤 새 버전으로 낸다.
 
 ## 안전 정책
 
@@ -537,6 +554,7 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
 - [x] DC-18: 코드는 비공개로 두고 빌드한 앱 zip만 공개 저장소 `superlucky84/homebrew-tap`의 Releases에 올린다("배포" 절).
   2026-11-19 사용자 결정(제안한 (b)안). 비교한 대안: (a) portwatch 저장소 공개(가장 단순하지만 코드가 공개됨),
   (c) brew 없이 직접 빌드해 설치(RQ-08과 다름). tap 저장소는 2026-11-20 사용자 동의로 에이전트가 만들었고, `TAP_TOKEN` secret은 사용자가 등록했다. 검증: M-13.
+  2026-11-20 사용자 결정: 코드 저장소를 공개로 바꾸지만 tap 저장소 방식은 유지한다(설치 명령이 한 줄이고 소스 전체를 tap으로 복제하지 않는다).
 - [x] DC-19: 대상 CPU는 Apple Silicon(`aarch64-apple-darwin`)만이다. 2026-11-18 사용자 Mac의 `uname -m`이 `arm64`였다.
   Intel Mac 사용자에게 배포하기로 하면 universal 빌드를 추가한다. Intel brew 경로(`/usr/local`) 판별은 Phase 6에서 합성 자료로만 확인한다.
 - [x] DC-20: 화면은 프레임워크 없이 ES 모듈로 만든다(docatlas 화면과 같은 방식). 2026-11-19 Phase 2 시작 때 정했다.
