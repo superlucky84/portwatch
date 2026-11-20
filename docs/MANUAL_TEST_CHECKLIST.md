@@ -173,7 +173,7 @@ find ~/Library/Caches/Homebrew -user root 2>/dev/null
 - [ ] 항목이 컨테이너 이름(`pw-test`)과 Docker 표시로 개발 서버에 보인다. 앱 `Docker` 항목에 그 포트가 남지 않는다.
 - [ ] 멈추면 확인 칸에 `docker stop pw-test`가 보이고, 컨테이너가 멈춰(`docker ps -a`에서 Exited) 항목이 사라진다.
 
-통과: 컨테이너가 포트 전달 프로세스가 아니라 컨테이너로 표시되고 멈춘다. 상태: 미실행.
+통과: 컨테이너가 포트 전달 프로세스가 아니라 컨테이너로 표시되고 멈춘다. 상태: 통과(2026-11-20, 사용자 Mac, 로컬 빌드 앱, Docker Desktop 시험 컨테이너).
 
 ### M-12 — hosts 도메인·nginx·인증서
 
