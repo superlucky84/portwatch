@@ -550,7 +550,8 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
   터미널의 `sudo brew services start`(11:14)가 만든 것이었다(앱 수정 빌드는 11:17). 정리 절차에 캐시 확인을 더했다.
 - 건너뜀(사용자 결정): M-12의 hosts·mkcert 항목. 도메인·인증서는 자동 테스트, 시험 nginx, CI 시나리오로 확인했다.
 - M-13 진행: v0.1.0을 `brew install --cask superlucky84/tap/portwatch`로 설치해 실행까지 확인했다(로컬 복사본은 지운 뒤).
-  업데이트 확인을 위해 버전만 올린 v0.1.1을 배포한다(사용자 요청).
+  업데이트 확인을 위해 버전만 올린 v0.1.1을 배포했다(사용자 요청, Release run 44679088657 성공, `Signature=adhoc`,
+  zip SHA-256이 cask 값 `8b8efa33…1e3b`와 같음).
 - 남은 것: M-13의 Spotlight·자동 실행·업데이트, M-14.
 - [ ] 결과를 수동 검증 문서에 기록하고 실패 항목은 해당 단계로 되돌린다.
 
@@ -566,7 +567,7 @@ Refs: RQ-01, RQ-02, RQ-03, RQ-04, RQ-05, RQ-06, RQ-07, RQ-08, RQ-09, M-01, M-02,
 - 이번에 정한 것(2026-11-20, 사용자): M-09 해당 없음, M-12 hosts·mkcert 항목 건너뜀. DC-17은 M-08로 닫았다.
   tap 저장소는 별도 공개 저장소 `homebrew-tap`으로 유지(설치 명령이 한 줄이 되는 방식)하고 에이전트가 만들었다.
 - 다음:
-  1. v0.1.1 Release workflow 결과 기록 뒤 `brew upgrade --cask portwatch`로 업데이트 확인.
+  1. `brew upgrade --cask portwatch`로 v0.1.1 업데이트 확인.
   2. M-13의 나머지(Spotlight·자동 실행), M-14(Gatekeeper 허용·회사 보안 프로그램·업데이트 뒤 재허용).
 - 로컬 작업 원칙: 시험용으로 직접 띄운 프로세스만 멈춘다. 사용자의 실제 서버·brew 서비스·보안 프로그램은 묻기 전에 건드리지 않는다.
   관리자 비밀번호는 사용자가 macOS 창에 직접 넣는다. 원격 푸시·workflow 실행·저장소 생성은 사용자에게 묻고 한다.
