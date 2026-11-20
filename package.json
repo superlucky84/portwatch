@@ -1,6 +1,6 @@
 {
   "name": "portwatch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "macOS menu bar app that lists local dev servers and stops them through their manager.",
   "type": "module",

@@ -195,12 +195,12 @@ hosts·mkcert 도메인 항목은 사용자 결정(2026-11-20)으로 건너뛰�
 
 대응: RQ-07·08, DC-05·18·19.
 
-- [ ] `brew install --cask superlucky84/tap/portwatch`로 설치하면 `/Applications/portwatch.app`이 생긴다.
+- [x] `brew install --cask superlucky84/tap/portwatch`로 설치하면 `/Applications/portwatch.app`이 생긴다. (2026-11-20, v0.1.0, 설치 뒤 실행까지 확인)
 - [ ] Spotlight에서 portwatch를 찾아 실행할 수 있다.
 - [ ] 로그인 시 자동 실행을 켜고 다시 로그인하면 메뉴바에 아이콘이 생긴다.
 - [ ] 새 버전이 나오면 `brew upgrade --cask portwatch`로 업데이트된다.
 
-통과: 설치·실행·자동 실행·업데이트가 된다. 상태: 미실행. 배포 위치는 DC-18로 정했다(공개 tap 저장소의 Releases). 첫 배포 v0.1.0을 올렸다(2026-11-20).
+통과: 설치·실행·자동 실행·업데이트가 된다. 상태: 진행 중(2026-11-20, 사용자 Mac). v0.1.0 brew 설치·실행 확인. 업데이트 확인용으로 v0.1.1(버전만 올림)을 배포한다.
 
 ### M-14 — 서명 없는 앱 실행
 
