@@ -13,6 +13,8 @@ const DOCKER_CLI_SUFFIX: &str = "/Docker.app/Contents/Resources/bin/docker";
 const DOCKER_SOCKET_SUFFIX: &str = "/.docker/run/docker.sock";
 
 /// root brew가 사용자 홈에 root 소유 파일을 만들지 않고, 자동 업데이트·통계 전송을 하지 않게 하는 환경(DC-17).
+/// 패키지 목록은 사용자 캐시(`HOMEBREW_CACHE`)에서 읽는다. root brew는 목록을 내려받지 않고 있는 파일만 읽으므로
+/// 사용자 캐시에 쓰지 않는다. `HOME=/var/root`만 주면 캐시가 비어 "cannot as root"로 실패한다(2026-11-20 사용자 Mac).
 const ADMIN_BREW_ENV: &str = "/usr/bin/env HOME=/var/root HOMEBREW_NO_AUTO_UPDATE=1 \
 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1";
 /// 사용자 권한 brew에 주는 환경. HOME·USER는 실행기가 붙인다.
@@ -194,14 +196,21 @@ pub fn validate(method: &StopMethod) -> Result<(), String> {
 }
 
 /// 관리자 권한으로 실행할 `/bin/sh` 명령. 검증한 값만 고정 틀에 넣는다. root brew 서비스만 해당한다.
-pub fn admin_shell_command(method: &StopMethod) -> Option<String> {
+/// `home`은 앱을 실행한 사용자의 홈이다. 따옴표·`$`·백슬래시가 없어야 하고, 공백이 있어도 되게 작은따옴표로 감싼다.
+pub fn admin_shell_command(method: &StopMethod, home: &str) -> Option<String> {
     validate(method).ok()?;
+    if !is_plain_path(home) {
+        return None;
+    }
+    let home = home.trim_end_matches('/');
     match method {
         StopMethod::BrewServices {
             brew,
             formula,
             domain,
-        } if domain == "system" => Some(format!("{ADMIN_BREW_ENV} {brew} services stop {formula}")),
+        } if domain == "system" => Some(format!(
+            "{ADMIN_BREW_ENV} HOMEBREW_CACHE='{home}/Library/Caches/Homebrew' {brew} services stop {formula}"
+        )),
         _ => None,
     }
 }
@@ -417,16 +426,34 @@ mod tests {
         let plan = plan(&user, &hints).unwrap();
         assert_eq!(plan.command, "brew services stop redis");
         assert!(!plan.admin);
-        assert_eq!(admin_shell_command(&plan.method), None);
+        assert_eq!(admin_shell_command(&plan.method, "/Users/dev"), None);
 
         let (root, hints) = brew("system", "/usr/local/opt/nginx/bin/nginx", "nginx");
         let plan = super::plan(&root, &hints).unwrap();
         assert!(plan.admin);
         assert_eq!(
-            admin_shell_command(&plan.method).unwrap(),
+            admin_shell_command(&plan.method, "/Users/dev").unwrap(),
             "/usr/bin/env HOME=/var/root HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
-             HOMEBREW_NO_ENV_HINTS=1 /usr/local/bin/brew services stop nginx"
+             HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_CACHE='/Users/dev/Library/Caches/Homebrew' \
+             /usr/local/bin/brew services stop nginx"
         );
+        assert_eq!(
+            admin_shell_command(&plan.method, "/Users/Dev Kim/").unwrap(),
+            "/usr/bin/env HOME=/var/root HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
+             HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_CACHE='/Users/Dev Kim/Library/Caches/Homebrew' \
+             /usr/local/bin/brew services stop nginx",
+            "공백이 있는 홈은 작은따옴표 안에 둔다"
+        );
+        for home in [
+            "/Users/a'b",
+            "/Users/$USER",
+            "/Users/a`id`",
+            "relative",
+            "/Users/../root",
+            "/Users/a\\b",
+        ] {
+            assert_eq!(admin_shell_command(&plan.method, home), None, "{home:?}");
+        }
 
         let (other, hints) = brew("system", "/Users/dev/bin/nginx", "nginx");
         assert_eq!(
@@ -457,7 +484,7 @@ mod tests {
                 domain: "system".into(),
             };
             assert!(validate(&method).is_err(), "{formula:?}");
-            assert_eq!(admin_shell_command(&method), None);
+            assert_eq!(admin_shell_command(&method, "/Users/dev"), None);
         }
         for formula in ["nginx", "php@8.3", "gtk+3", "python-tk_x.y"] {
             let method = StopMethod::BrewServices {

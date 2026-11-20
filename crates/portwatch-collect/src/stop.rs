@@ -110,7 +110,7 @@ fn execute(tools: &StopTools, method: &StopMethod, force: bool) -> Result<(), St
             formula,
             domain,
         } if domain == "system" => {
-            let command = admin_shell_command(method)
+            let command = admin_shell_command(method, &tools.env.home)
                 .ok_or_else(|| failed("관리자 명령을 만들 수 없습니다.", None))?;
             let script = admin_script(&command)
                 .ok_or_else(|| failed("관리자 명령을 만들 수 없습니다.", None))?;
@@ -596,7 +596,8 @@ mod tests {
                 "/usr/bin/osascript",
                 "-e",
                 "do shell script \"/usr/bin/env HOME=/var/root HOMEBREW_NO_AUTO_UPDATE=1 \
-                 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1 /opt/homebrew/bin/brew services \
+                 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1 \
+                 HOMEBREW_CACHE='/Users/dev/Library/Caches/Homebrew' /opt/homebrew/bin/brew services \
                  stop nginx\" with administrator privileges"
             ]
         );

@@ -43,6 +43,14 @@ find /opt/homebrew -user root 2>/dev/null
 find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admin
 ```
 
+`sudo brew`는 사용자 홈의 Homebrew 캐시에도 root 소유 파일(예: `tool-selection/curl`·`git`)을 만들 수 있다. 확인하고 지운다(brew가 다시 만든다).
+
+```bash
+find ~/Library/Caches/Homebrew -user root 2>/dev/null
+```
+
+소유자 변경은 `sudo brew services start`가 만든다. portwatch의 멈추기는 소유자를 바꾸지도 되돌리지도 않는다.
+
 ### M-01 — root brew 서비스 탐지
 
 대응: RQ-03·04, DC-07·08·09. 예제: F-01.
@@ -53,7 +61,7 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 - [ ] 상세에 master PID, worker, 라벨, plist 경로, 실행 파일이 보인다.
 - [ ] 시험 뒤 위의 정리 절차를 실행한다.
 
-통과: nginx가 root brew 서비스로 정확히 표시된다. 상태: 탐지는 2026-11-19 사용자 Mac에서 `portwatch-probe`로 확인(한 항목, root, master·worker). 화면 표시는 Phase 2 이후.
+통과: nginx가 root brew 서비스로 정확히 표시된다. 상태: 탐지는 2026-11-19 사용자 Mac에서 `portwatch-probe`로 확인(한 항목, root, master·worker). 화면 표시는 Phase 2 이후. 2026-11-20 로컬 빌드 앱에서 root 표시와 함께 확인(M-08 준비).
 
 ### M-02 — 사용자 brew 서비스 탐지
 
@@ -62,7 +70,7 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 - [ ] sudo 없이 `brew services start <포뮬러>`로 서비스를 띄운다.
 - [ ] 항목에 `brew 서비스` 표시가 있고 `root` 표시는 없다.
 
-통과: 사용자 서비스와 root 서비스가 구분된다. 상태: 탐지는 2026-11-19 사용자 Mac에서 `portwatch-probe`로 확인(nginx가 `brew 서비스(user)`, root 표시 없음). 화면 표시는 Phase 2 이후.
+통과: 사용자 서비스와 root 서비스가 구분된다. 상태: 탐지는 2026-11-19 사용자 Mac에서 `portwatch-probe`로 확인(nginx가 `brew 서비스(user)`, root 표시 없음). 화면 표시는 2026-11-20 로컬 빌드 앱에서 확인.
 
 ### M-03 — 터미널 개발 서버 여러 개
 
@@ -73,7 +81,7 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 - [ ] 세 서버가 개발 서버 분류에 각각 보인다. 프로젝트 이름, 포트, 실행 명령이 맞다.
 - [ ] 감시 도구 아래 서버는 감시 도구와 함께 한 항목으로 묶인다.
 
-통과: 포트만 다른 서버들이 프로젝트별로 구분된다. 상태: 일부 통과. 2026-11-19 probe로 터미널 서버 1개(모노레포 하위 패키지 이름, 하위 프로세스 묶음)를, Phase 2 앱으로 서로 다른 프로젝트의 서버가 프로젝트 이름으로 구분되는 것을 확인했다. 감시 도구(nodemon)·`python3 -m http.server` 경우는 실제로 보지 않았다(합성 자료 F-03으로만 확인, Phase 7).
+통과: 포트만 다른 서버들이 프로젝트별로 구분된다. 상태: 일부 통과. 2026-11-19 probe로 터미널 서버 1개(모노레포 하위 패키지 이름, 하위 프로세스 묶음)를, Phase 2 앱으로 서로 다른 프로젝트의 서버가 프로젝트 이름으로 구분되는 것을 확인했다. 감시 도구(nodemon)·`python3 -m http.server` 경우는 2026-11-20 로컬 빌드 앱에서 확인해 통과.
 
 ### M-04 — 잡음 분류
 
@@ -111,7 +119,7 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 - [ ] 멈춘 뒤 감시 도구까지 끝나고 포트가 비며, 서버가 다시 뜨지 않는다.
 - [ ] 띄웠던 터미널 창은 그대로 남는다.
 
-통과: 프로세스 그룹 전체가 끝나고 결과가 "성공"이다. 상태: 미실행.
+통과: 프로세스 그룹 전체가 끝나고 결과가 "성공"이다. 상태: 통과(2026-11-20, 사용자 Mac, 로컬 빌드 앱. M-03의 감시 도구·`python3 -m http.server` 경우도 함께 확인).
 
 ### M-07 — 사용자 brew 서비스 멈추기
 
@@ -121,7 +129,7 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 - [ ] 멈춘 뒤 포트가 비고, 30초 뒤에도 다시 뜨지 않는다.
 - [ ] 터미널의 `brew services list`에서도 멈춘 상태다.
 
-통과: launchd가 다시 띄우지 않는다. 상태: 미실행.
+통과: launchd가 다시 띄우지 않는다. 상태: 통과(2026-11-20, 사용자 Mac, 사용자 brew nginx).
 
 ### M-08 — root brew 서비스 멈추기
 
@@ -132,7 +140,8 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 - [ ] 다시 시도해 비밀번호를 넣으면 nginx가 멈추고 포트가 빈다.
 - [ ] 30초 뒤에도 다시 뜨지 않는다. 시험 뒤 정리 절차를 실행한다.
 
-통과: 앱이 root로 실행되지 않은 채 root 서비스를 멈춘다. 상태: 미실행.
+통과: 앱이 root로 실행되지 않은 채 root 서비스를 멈춘다. 상태: 통과(2026-11-20, 사용자 Mac). 1차는 "Need to download … but cannot as root!"로 실패했고,
+`HOMEBREW_CACHE`를 사용자 캐시로 주도록 고친 뒤 취소·멈춤 모두 맞게 동작했다(DC-17).
 
 ### M-09 — 다시 실행되는 경우 감지
 
@@ -175,7 +184,8 @@ find /opt/homebrew -user root 2>/dev/null | xargs sudo chown -h "$(whoami)":admi
 - [ ] 만료가 가까운 인증서로 바꾸면 경고가 보인다.
 - [ ] 시험 뒤 hosts와 nginx 설정을 원래대로 돌린다(앱은 이 파일들을 바꾸지 않는다).
 
-통과: 도메인에서 실제 개발 서버까지 연결이 보인다. 상태: 미실행.
+통과: 도메인에서 실제 개발 서버까지 연결이 보인다. 상태: 일부 통과(2026-11-20, 사용자 Mac). 지금 쓰는 nginx 설정의 경로별 주소와 "nginx 경유"를 확인했다.
+hosts·mkcert 도메인 항목은 아직 결과를 받지 않았다.
 
 ### M-13 — brew 설치·Spotlight·자동 실행
 

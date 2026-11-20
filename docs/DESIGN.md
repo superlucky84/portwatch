@@ -268,7 +268,7 @@ listener 실행 파일 이름이다. 단 dev-tool 분류는 listener 실행 파�
 | --- | --- | --- | --- |
 | `terminal`·`detached`·`app`(앱 아래 프로세스와 앱 자체)·`unknown` | 최상위가 자기 프로세스 그룹의 리더(pgid = PID)면 그룹에 SIGTERM(`kill -TERM -<pgid>`), 아니면 최상위 PID에만(`kill -TERM <pid>`). 남아 있으면 사용자 확인 후 같은 대상에 SIGKILL | 일반 | nodemon 같은 감시 도구까지 함께 멈춘다. 그룹 리더가 아니면 셸이 같은 그룹일 수 있어 그룹에 보내지 않는다 |
 | `launchd-brew` (user) | `<brew> services stop <포뮬러>` (`brew services stop nginx`) | 일반 | kill 하면 KeepAlive가 다시 띄울 수 있다 |
-| `launchd-brew` (system) | 관리자 권한으로 `/usr/bin/env HOME=/var/root HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1 <brew> services stop <포뮬러>` | 관리자 | DC-17 제안. root brew는 `services`만 허용하고 `system` 도메인에서 bootout한 뒤 `/Library/LaunchDaemons`의 plist를 지운다 |
+| `launchd-brew` (system) | 관리자 권한으로 `/usr/bin/env HOME=/var/root HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_CACHE='<홈>/Library/Caches/Homebrew' <brew> services stop <포뮬러>` | 관리자 | DC-17 제안. root brew는 `services`만 허용하고 `system` 도메인에서 bootout한 뒤 `/Library/LaunchDaemons`의 plist를 지운다 |
 | `launchd-other` | 없음 | — | DC-13: 멈추지 않는다 |
 | `docker` | `<docker> --host unix://<홈>/.docker/run/docker.sock stop <컨테이너 ID>` (`docker stop <이름>`) | 일반 | DC-14 |
 | `pm2` | 없음 | — | DC-22: 멈추지 않는다(사용자 결정) |
@@ -522,12 +522,17 @@ portwatch                 09:41:05 갱신  [새로 고침] [설정]
 - [x] DC-16: 갱신 주기 기본값은 창을 연 동안 3초, 닫은 동안 15초이고 설정에서 2·3·5초와 10·15·30·60초 중 고른다.
   근거: 2026-11-19 사용자가 이 기본값으로 Phase 2 앱을 써서 목록·숫자 갱신이 문제없다고 확인했고, macOS CI 실행기에서 수집 한 번이
   110 ms였다(항목 1개). 사용자 Mac의 수집 시간·CPU 수치는 받지 않았다. CPU 부담이 보고되면 닫힌 동안의 기본값부터 늘린다. 검증: M-05.
-- [ ] DC-17: root brew 서비스를 관리자 권한으로 멈추는 실제 명령. 제안: 관리자 권한으로 `/usr/bin/env HOME=/var/root
+- [x] DC-17: root brew 서비스를 관리자 권한으로 멈추는 실제 명령. 정함(2026-11-20, M-08 통과): 관리자 권한으로 `/usr/bin/env HOME=/var/root
   HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1 <brew> services stop <포뮬러>`("멈추기" 절).
   근거(2026-11-19, 사용자 Mac의 Homebrew 7.0.14 소스): `brew.sh`의 root 검사는 `services` 명령을 허용하고, root일 때 `brew services stop`은
   `system` 도메인에서 `launchctl bootout`한 뒤 `/Library/LaunchDaemons`의 plist를 지운다. `launchctl bootout`만 쓰면 plist가 남아
   재부팅 때 다시 뜬다. `HOME=/var/root`는 root brew가 사용자 홈의 캐시에 root 소유 파일을 만들지 않게 하려는 것이다.
-  남은 확인: osascript 관리자 권한에서 실제로 멈추는지, 취소 처리. 사용자 Mac M-08로 닫는다.
+  2026-11-20 사용자 Mac M-08 1차: `HOME=/var/root`만 주면 root brew가 빈 캐시에서 패키지 목록을 찾다가
+  "Need to download … but cannot as root!"로 실패했다. root brew(brew 소유자가 root가 아님)는 목록을 내려받지 않고 있는 파일만 읽으므로
+  `HOMEBREW_CACHE`를 사용자 캐시로 준다(쓰지 않으므로 root 소유 파일이 생기지 않는다). 홈은 경로 검증을 거쳐 작은따옴표로 감싼다.
+  사용자 캐시에 목록이 없으면(brew를 한 번도 쓰지 않음) 같은 오류가 나며, 터미널에서 `brew update`를 먼저 하라는 안내가 그대로 보인다.
+  2026-11-20 고친 명령으로 사용자 Mac M-08 통과: 비밀번호 창 취소는 "취소됨", 비밀번호를 넣으면 nginx가 멈추고 `/Library/LaunchDaemons`의
+  plist도 지워졌다. 멈춘 뒤 `/opt/homebrew`에 root 소유 파일이 없었다. 소유자 변경은 `sudo brew services start`가 만들고 앱은 되돌리지 않는다.
 - [x] DC-18: 코드는 비공개로 두고 빌드한 앱 zip만 공개 저장소 `superlucky84/homebrew-tap`의 Releases에 올린다("배포" 절).
   2026-11-19 사용자 결정(제안한 (b)안). 비교한 대안: (a) portwatch 저장소 공개(가장 단순하지만 코드가 공개됨),
   (c) brew 없이 직접 빌드해 설치(RQ-08과 다름). tap 저장소 생성과 `TAP_TOKEN` secret 등록은 사용자가 한다. 검증: M-13.
